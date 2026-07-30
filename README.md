@@ -82,7 +82,7 @@ The sandbox should be easy to run locally, in Docker and in automated test pipel
 
 Every request, domain transition, generated event and webhook delivery attempt should be inspectable.
 
-### ragmatic architecture
+### Pragmatic architecture
 
 The project uses domain-driven design, hexagonal architecture and distributed-systems patterns only where they provide concrete value.
 
