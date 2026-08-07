@@ -62,6 +62,18 @@ Payment Sandbox can be used to test situations such as:
 * a webhook contains an invalid signature;
 * the API temporarily returns stale or inconsistent state.
 
+## Lint
+
+```bash
+golangci-lint run
+```
+
+Check formatting without modifying files:
+
+```bash
+golangci-lint fmt --diff
+```
+
 ## Core design principles
 
 ### Deterministic by default
