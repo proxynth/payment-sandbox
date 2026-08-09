@@ -68,3 +68,20 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
+
+  race:
+    name: Race detector
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests with race detector
+        run: go test -race ./...

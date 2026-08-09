@@ -62,6 +62,38 @@ Payment Sandbox can be used to test situations such as:
 * a webhook contains an invalid signature;
 * the API temporarily returns stale or inconsistent state.
 
+## Development
+
+### Testing
+
+Run the complete test suite:
+
+```bash
+go test ./...
+```
+
+Run tests with the Go race detector:
+
+```bash
+go test -race ./...
+```
+
+Generate a coverage report:
+
+```bash
+go test -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
+```
+
+#### Testing conventions
+
+- Tests should be deterministic.
+- Unit tests should live next to the code they exercise.
+- Prefer table-driven tests when several inputs exercise the same behaviour.
+- Tests should not depend on external services.
+- Avoid real sleeps for time-dependent behaviour.
+- Prefer observable behaviour over implementation-detail assertions.
+
 ## Lint
 
 ```bash

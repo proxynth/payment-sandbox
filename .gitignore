@@ -30,3 +30,7 @@ payment-sandbox
 
 # Builded repomix
 payment-sandbox.xml
+
+# Tests coverage
+coverage.out
+*.cover
