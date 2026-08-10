@@ -86,6 +86,23 @@ make build
 make run
 ```
 
+### Logging
+
+Payment Sandbox uses structured logging through Go's `log/slog`.
+
+Default configuration:
+
+```dotenv
+PAYMENT_SANDBOX_LOG_LEVEL=info
+PAYMENT_SANDBOX_LOG_FORMAT=text
+```
+
+JSON output can be enabled with:
+
+```bash
+PAYMENT_SANDBOX_LOG_FORMAT=json make run
+```
+
 ### Testing
 
 Run the complete test suite:
