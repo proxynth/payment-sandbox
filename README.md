@@ -64,6 +64,28 @@ Payment Sandbox can be used to test situations such as:
 
 ## Development
 
+Common development commands are exposed through the Makefile.
+
+```bash
+make help
+```
+
+Typical workflow:
+
+```bash
+make fmt
+make test
+make lint
+make check
+```
+
+Build and run the application:
+
+```
+make build
+make run
+```
+
 ### Testing
 
 Run the complete test suite:

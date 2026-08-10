@@ -31,6 +31,9 @@ payment-sandbox
 # Builded repomix
 payment-sandbox.xml
 
-# Tests coverage
+# Tests artifacts
 coverage.out
 *.cover
+
+# Build artifacts
+/bin/
