@@ -41,7 +41,12 @@ check: ## Run local CI checks
 		exit 1; \
 	fi
 	go mod tidy
-	git diff --exit-code
+	@changes="$$(git status --porcelain -- go.mod go.sum)"; \
+	if [ -n "$$changes" ]; then \
+		echo "go mod tidy produced changes:"; \
+		echo "$$changes"; \
+		exit 1; \
+	fi
 	go build ./...
 	go test ./...
 	golangci-lint run

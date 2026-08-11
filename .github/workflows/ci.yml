@@ -42,7 +42,14 @@ jobs:
       - name: Verify module files
         run: |
           go mod tidy
-          git diff --exit-code
+      
+          changes="$(git status --porcelain -- go.mod go.sum)"
+      
+          if [ -n "$changes" ]; then
+            echo "go mod tidy produced changes:"
+            echo "$changes"
+            exit 1
+          fi
 
       - name: Build
         run: go build ./...
