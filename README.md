@@ -86,6 +86,27 @@ make build
 make run
 ```
 
+### Configuration
+
+Payment Sandbox is configured through environment variables.
+
+Available variables:
+
+| Variable | Default | Values |
+|---|---|---|
+| `PAYMENT_SANDBOX_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `PAYMENT_SANDBOX_LOG_FORMAT` | `text` | `text`, `json` |
+
+Example:
+
+```bash
+PAYMENT_SANDBOX_LOG_LEVEL=debug \
+PAYMENT_SANDBOX_LOG_FORMAT=json \
+make run
+```
+
+See .env.example for the currently supported configuration.
+
 ### Logging
 
 Payment Sandbox uses structured logging through Go's `log/slog`.
