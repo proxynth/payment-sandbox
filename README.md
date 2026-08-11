@@ -86,6 +86,8 @@ make build
 make run
 ```
 
+The application loads configuration from environment variables during startup.
+
 ### Configuration
 
 Payment Sandbox is configured through environment variables.

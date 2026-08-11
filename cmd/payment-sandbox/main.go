@@ -1,7 +1,15 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+
+	"proxynth/payment-sandbox/internal/app"
+)
 
 func main() {
-	fmt.Println("Payment Sandbox")
+	if err := app.Run(); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
