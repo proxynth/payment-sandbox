@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"proxynth/payment-sandbox/internal/config"
+	"proxynth/payment-sandbox/internal/platform/config"
 	"proxynth/payment-sandbox/internal/platform/logging"
 )
 
