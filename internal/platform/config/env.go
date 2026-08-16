@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	envLogLevel  = "PAYMENT_SANDBOX_LOG_LEVEL"
-	envLogFormat = "PAYMENT_SANDBOX_LOG_FORMAT"
+	envLogLevel            = "PAYMENT_SANDBOX_LOG_LEVEL"
+	envLogFormat           = "PAYMENT_SANDBOX_LOG_FORMAT"
+	envDatabasePath        = "PAYMENT_SANDBOX_DATABASE_PATH"
+	envDatabaseBusyTimeout = "PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT"
 )
 
 func Load() (Config, error) {

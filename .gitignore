@@ -37,3 +37,8 @@ coverage.out
 
 # Build artifacts
 /bin/
+
+# Database SQLite artifacts
+payment-sandbox.db
+payment-sandbox.db-shm
+payment-sandbox.db-wal
