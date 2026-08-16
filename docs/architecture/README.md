@@ -101,6 +101,12 @@ This document describes the bounded contexts.
 
 ---
 
+# Targeted Hexagonal Architecture
+
+Read: [Targeted Hexagonal Architecture](hexagonal-architecture.md)
+
+---
+
 # Architectural Decision Records
 
 The ADRs should be read sequentially.
