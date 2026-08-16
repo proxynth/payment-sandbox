@@ -27,10 +27,10 @@ A module:
 
 Cross-cutting technical concerns belong under:
 
-`internal/platform`
+`../../internal/platform`
 
 Application composition belongs under:
 
-`internal/app`
+`../../internal/app`
 
 Package structures are responsibility-driven and do not need to be identical across modules.
