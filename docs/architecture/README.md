@@ -91,6 +91,16 @@ These principles should remain stable even if implementation details evolve.
 
 ---
 
+# Bounded contexts
+
+Read:
+
+- [Bounded Contexts](bounded-contexts.md)
+
+This document describes the bounded contexts.
+
+---
+
 # Architectural Decision Records
 
 The ADRs should be read sequentially.
