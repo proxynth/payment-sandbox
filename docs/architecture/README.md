@@ -107,6 +107,12 @@ Read: [Targeted Hexagonal Architecture](hexagonal-architecture.md)
 
 ---
 
+# Shared Kernel
+
+Read: [Shared Kernel](shared-kernel.md)
+
+---
+
 # Architectural Decision Records
 
 The ADRs should be read sequentially.
