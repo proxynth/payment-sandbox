@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,7 @@ func TestRun_StartWithValidConfiguration(t *testing.T) {
 
 	var output bytes.Buffer
 
-	err := run(&output)
+	err := run(context.Background(), &output)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -30,7 +31,7 @@ func TestRun_ReturnsConfigurationError(t *testing.T) {
 
 	var output bytes.Buffer
 
-	err := run(&output)
+	err := run(context.Background(), &output)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")

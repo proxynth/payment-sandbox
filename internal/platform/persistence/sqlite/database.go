@@ -27,7 +27,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (*sql.DB, error) {
 
 	// Payment Sandbox is primarily a local application.
 	// A single connection avoids surprising behavior with
-	// connection-local PRAGMs and is sufficient for now.
+	// connection-local PRAGMAs and is sufficient for now.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
