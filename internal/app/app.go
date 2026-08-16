@@ -1,18 +1,20 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"proxynth/payment-sandbox/internal/platform/config"
 	"proxynth/payment-sandbox/internal/platform/logging"
+	"proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 )
 
 func Run() error {
-	return run(os.Stdout)
+	return run(context.Background(), os.Stdout)
 }
 
-func run(output io.Writer) error {
+func run(ctx context.Context, output io.Writer) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
@@ -23,7 +25,20 @@ func run(output io.Writer) error {
 		return fmt.Errorf("create logger: %w", err)
 	}
 
-	logger.Info("payment sandbox starting")
+	database, err := sqlite.Open(ctx, cfg.Database)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer func() {
+		_ = database.Close()
+	}()
+
+	logger.Info(
+		"payment sandbox starting",
+		"database", cfg.Database.Path,
+		"log_level", cfg.Logging.Level,
+		"log_format", cfg.Logging.Format,
+	)
 
 	return nil
 }
