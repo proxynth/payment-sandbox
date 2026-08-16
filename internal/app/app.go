@@ -8,6 +8,7 @@ import (
 	"proxynth/payment-sandbox/internal/platform/config"
 	"proxynth/payment-sandbox/internal/platform/logging"
 	"proxynth/payment-sandbox/internal/platform/persistence/sqlite"
+	"proxynth/payment-sandbox/internal/platform/persistence/sqlite/migrations"
 )
 
 func Run() error {
@@ -32,6 +33,10 @@ func run(ctx context.Context, output io.Writer) error {
 	defer func() {
 		_ = database.Close()
 	}()
+
+	if err := migrations.Up(database); err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
 
 	logger.Info(
 		"payment sandbox starting",
