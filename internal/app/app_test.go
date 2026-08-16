@@ -3,13 +3,18 @@ package app
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestRun_StartWithValidConfiguration(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "payment-sandbox.db")
+
 	t.Setenv("PAYMENT_SANDBOX_LOG_LEVEL", "info")
 	t.Setenv("PAYMENT_SANDBOX_LOG_FORMAT", "text")
+	t.Setenv("PAYMENT_SANDBOX_DATABASE_PATH", dbPath)
+	t.Setenv("PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT", "5s")
 
 	var output bytes.Buffer
 
