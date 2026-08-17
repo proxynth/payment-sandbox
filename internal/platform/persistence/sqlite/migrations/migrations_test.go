@@ -12,6 +12,8 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+const latestVersion int64 = 2
+
 func TestUp_AppliesMigrations(t *testing.T) {
 	db := openTestDatabase(t)
 
@@ -44,8 +46,8 @@ func TestUp_TracksCurrentVersion(t *testing.T) {
 		t.Fatalf("GetDBVersion() error = %v", err)
 	}
 
-	if version != 1 {
-		t.Errorf("database version = %d, want 1", version)
+	if version != latestVersion {
+		t.Errorf("database version = %d, want %d", version, latestVersion)
 	}
 }
 
