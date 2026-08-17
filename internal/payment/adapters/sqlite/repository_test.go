@@ -82,32 +82,23 @@ func TestRepository_SaveSamePaymentTwiceKeepsSingleRow(t *testing.T) {
 	ctx := context.Background()
 	repository := newTestRepository(t)
 
-	payment, err := domain.New("test-payment-02")
+	payment, err := domain.New("payment-conflict")
 	if err != nil {
 		t.Fatalf("domain.New() error = %v", err)
 	}
 
-	if err := repository.Save(context.Background(), payment); err != nil {
-		t.Fatalf("first Save() error: %v", err)
+	if err := repository.Save(ctx, payment); err != nil {
+		t.Fatalf("first Save() error = %v", err)
 	}
 
-	if err := repository.Save(context.Background(), payment); err != nil {
-		t.Fatalf("second Save() error: %v", err)
-	}
+	err = repository.Save(ctx, payment)
 
-	var count int
-
-	err = repository.db.QueryRowContext(
-		ctx,
-		"SELECT COUNT(*) FROM payments WHERE id = ?",
-		payment.ID(),
-	).Scan(&count)
-	if err != nil {
-		t.Fatalf("count persisted payments: %v", err)
-	}
-
-	if count != 1 {
-		t.Errorf("payment row count = %d, want 1", count)
+	if !errors.Is(err, application.ErrPaymentVersionConflict) {
+		t.Errorf(
+			"second Save() error = %v, want %v",
+			err,
+			application.ErrPaymentVersionConflict,
+		)
 	}
 }
 
@@ -221,5 +212,109 @@ func TestRepository_CanUseTransaction(t *testing.T) {
 
 	if got.ID() != payment.ID() {
 		t.Errorf("ID() = %q, want %q", got.ID(), payment.ID())
+	}
+}
+
+func TestRepository_SaveNextVersionSucceeds(t *testing.T) {
+	ctx := context.Background()
+	repository := newTestRepository(t)
+
+	payment, err := domain.New("payment-versioned")
+	if err != nil {
+		t.Fatalf("domain.New() error = %v", err)
+	}
+
+	if err := repository.Save(ctx, payment); err != nil {
+		t.Fatalf("Save(version 1) error = %v", err)
+	}
+
+	updatedPayment, err := domain.Restore(
+		payment.ID(),
+		payment.Status(),
+		2,
+	)
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+
+	if err := repository.Save(ctx, updatedPayment); err != nil {
+		t.Fatalf("Save(version 2) error = %v", err)
+	}
+
+	got, err := repository.FindByID(ctx, updatedPayment.ID())
+	if err != nil {
+		t.Fatalf("FindByID() error = %v", err)
+	}
+
+	if got.Version() != 2 {
+		t.Errorf("Version() = %d, want %d", got.Version(), 2)
+	}
+}
+
+func TestRepository_SaveRejectsStaleAggregate(t *testing.T) {
+	ctx := context.Background()
+	repository := newTestRepository(t)
+
+	payment, err := domain.New("payment-concurrent")
+	if err != nil {
+		t.Fatalf("domain.New() error = %v", err)
+	}
+
+	if err := repository.Save(ctx, payment); err != nil {
+		t.Fatalf("initial Save() error = %v", err)
+	}
+
+	first, err := repository.FindByID(ctx, payment.ID())
+	if err != nil {
+		t.Fatalf("first FindByID() error = %v", err)
+	}
+
+	second, err := repository.FindByID(ctx, payment.ID())
+	if err != nil {
+		t.Fatalf("second FindByID() error = %v", err)
+	}
+
+	firstUpdated, err := domain.Restore(
+		first.ID(),
+		first.Status(),
+		first.Version()+1,
+	)
+	if err != nil {
+		t.Fatalf("Restore(first) error = %v", err)
+	}
+
+	secondUpdated, err := domain.Restore(
+		second.ID(),
+		second.Status(),
+		second.Version()+1,
+	)
+	if err != nil {
+		t.Fatalf("Restore(second) error = %v", err)
+	}
+
+	if err := repository.Save(ctx, firstUpdated); err != nil {
+		t.Fatalf("Save(first) error = %v", err)
+	}
+
+	err = repository.Save(ctx, secondUpdated)
+
+	if !errors.Is(err, application.ErrPaymentVersionConflict) {
+		t.Errorf(
+			"Save(second) error = %v, want %v",
+			err,
+			application.ErrPaymentVersionConflict,
+		)
+	}
+
+	persisted, err := repository.FindByID(ctx, payment.ID())
+	if err != nil {
+		t.Fatalf("FindByID() error = %v", err)
+	}
+
+	if persisted.Version() != 2 {
+		t.Errorf(
+			"Version() = %d, want 2",
+			persisted.Version(),
+		)
 	}
 }

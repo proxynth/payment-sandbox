@@ -43,11 +43,29 @@ func (r *Repository) Save(ctx context.Context, payment *domain.Payment) error {
 	   ) VALUES ($1, $2, $3)
 	   ON CONFLICT(id) DO UPDATE SET 
 		   status = EXCLUDED.status,
-		   version = EXCLUDED.version`
+		   version = EXCLUDED.version
+	   WHERE payments.version = excluded.version - 1`
 
-	_, err := r.db.ExecContext(ctx, query, payment.ID(), payment.Status(), payment.Version())
+	result, err := r.db.ExecContext(ctx, query, payment.ID(), payment.Status(), payment.Version())
 	if err != nil {
 		return fmt.Errorf("save payment %q: %w", payment.ID(), err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf(
+			"get affected rows for payment %q: %w",
+			payment.ID(),
+			err,
+		)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf(
+			"save payment %q: %w",
+			payment.ID(),
+			application.ErrPaymentVersionConflict,
+		)
 	}
 
 	return nil
