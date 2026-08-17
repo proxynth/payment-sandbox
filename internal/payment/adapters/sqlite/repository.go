@@ -5,17 +5,32 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"proxynth/payment-sandbox/internal/payment/application"
 	"proxynth/payment-sandbox/internal/payment/domain"
 )
 
 var _ application.Repository = (*Repository)(nil)
 
-type Repository struct {
-	db *sql.DB
+type executor interface {
+	ExecContext(
+		ctx context.Context,
+		query string,
+		args ...any,
+	) (sql.Result, error)
+
+	QueryRowContext(
+		ctx context.Context,
+		query string,
+		args ...any,
+	) *sql.Row
 }
 
-func NewRepository(db *sql.DB) *Repository {
+type Repository struct {
+	db executor
+}
+
+func NewRepository(db executor) *Repository {
 	return &Repository{db: db}
 }
 

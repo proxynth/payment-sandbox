@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
-	"proxynth/payment-sandbox/internal/platform/config"
 	"testing"
 	"time"
+
+	"proxynth/payment-sandbox/internal/platform/config"
 )
 
 func TestOpen_CreatesDatabase(t *testing.T) {

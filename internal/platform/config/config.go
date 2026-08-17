@@ -1,8 +1,9 @@
 package config
 
 import (
-	"proxynth/payment-sandbox/internal/platform/logging"
 	"time"
+
+	"proxynth/payment-sandbox/internal/platform/logging"
 )
 
 type DatabaseConfig struct {

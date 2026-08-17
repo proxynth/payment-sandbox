@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -15,6 +16,12 @@ import (
 )
 
 func newTestRepository(t *testing.T) *Repository {
+	t.Helper()
+
+	return NewRepository(newTestDatabase(t))
+}
+
+func newTestDatabase(t *testing.T) *sql.DB {
 	t.Helper()
 
 	ctx := context.Background()
@@ -37,7 +44,7 @@ func newTestRepository(t *testing.T) *Repository {
 		t.Fatalf("migrate database: %v", err)
 	}
 
-	return NewRepository(db)
+	return db
 }
 
 func TestRepository_SaveAndFindByID(t *testing.T) {
@@ -176,5 +183,43 @@ func TestRepository_FindByIDRejectsInvalidPersistedAggregate(t *testing.T) {
 
 	if !errors.Is(err, domain.ErrInvalidPaymentStatus) {
 		t.Errorf("FindByID() error = %v, want %v", err, domain.ErrInvalidPaymentStatus)
+	}
+}
+
+func TestRepository_CanUseTransaction(t *testing.T) {
+	ctx := context.Background()
+
+	db := newTestDatabase(t)
+
+	payment, err := domain.New("payment-transaction")
+	if err != nil {
+		t.Fatalf("domain.New() error = %v", err)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+
+	txRepository := NewRepository(tx)
+
+	if err := txRepository.Save(ctx, payment); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+
+	repository := NewRepository(db)
+
+	got, err := repository.FindByID(ctx, payment.ID())
+	if err != nil {
+		t.Fatalf("FindByID() error = %v", err)
+	}
+
+	if got.ID() != payment.ID() {
+		t.Errorf("ID() = %q, want %q", got.ID(), payment.ID())
 	}
 }

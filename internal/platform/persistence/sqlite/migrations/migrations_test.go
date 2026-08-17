@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
-	"proxynth/payment-sandbox/internal/platform/config"
-	"proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 	"testing"
 	"time"
+
+	"proxynth/payment-sandbox/internal/platform/config"
+	"proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 
 	"github.com/pressly/goose/v3"
 )
