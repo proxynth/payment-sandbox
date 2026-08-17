@@ -25,3 +25,12 @@ formatters:
   enable:
     - gofmt
     - goimports
+    - gci
+
+  settings:
+    gci:
+      sections:
+        - standard
+        - prefix(proxynth/payment-sandbox)
+        - default
+      custom-order: true

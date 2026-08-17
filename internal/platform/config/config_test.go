@@ -1,8 +1,9 @@
 package config
 
 import (
-	"proxynth/payment-sandbox/internal/platform/logging"
 	"testing"
+
+	"proxynth/payment-sandbox/internal/platform/logging"
 )
 
 func TestLoad_Defaults(t *testing.T) {
