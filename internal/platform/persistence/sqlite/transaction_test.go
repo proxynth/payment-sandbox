@@ -26,10 +26,20 @@ func TestTransactionManager_CommitsSuccessfulTransaction(t *testing.T) {
 			INSERT INTO payments (
                       id,
                       status,
+					  amount,
+					  currency,
+					  authorized_amount,
+					  captured_amount,
+					  refunded_amount,
                       version
-			) VALUES (?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			"payment-commit",
 			"pending",
+			4999,
+			"EUR",
+			0,
+			0,
+			0,
 			1,
 		)
 
@@ -71,11 +81,21 @@ func TestTransactionManager_RollsBackFailedTransaction(t *testing.T) {
 				INSERT INTO payments (
                       id,
                       status,
+					  amount,
+					  currency,
+					  authorized_amount,
+					  captured_amount,
+					  refunded_amount,
                       version
-			  	) VALUES (?, ?, ?)
+			  	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			`,
 			"payment-rollback",
 			"pending",
+			4999,
+			"EUR",
+			0,
+			0,
+			0,
 			1,
 		)
 		if err != nil {
@@ -119,14 +139,24 @@ func TestTransactionManager_RollsBackAllChanges(t *testing.T) {
 			ctx,
 			`
 				INSERT INTO payments (
-				                      id,
-				                      status,
-				                      version
+				                 id,
+				                	status,
+								    amount,
+								    currency,
+								    authorized_amount,
+								    captured_amount,
+								    refunded_amount,
+				                    version
 				)
-				VALUES (?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 				`,
 			"payment-1",
 			"pending",
+			4999,
+			"EUR",
+			0,
+			0,
+			0,
 			1,
 		)
 		if err != nil {
@@ -139,12 +169,22 @@ func TestTransactionManager_RollsBackAllChanges(t *testing.T) {
 				INSERT INTO payments (
 									id,
 				                	status,
+								    amount,
+								    currency,
+								    authorized_amount,
+								    captured_amount,
+								    refunded_amount,
 				                    version
 				)
-				VALUES (?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 				`,
 			"payment-2",
 			"pending",
+			7999,
+			"EUR",
+			0,
+			0,
+			0,
 			1,
 		)
 		if err != nil {

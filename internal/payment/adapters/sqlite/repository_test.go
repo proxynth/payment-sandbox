@@ -47,11 +47,23 @@ func newTestDatabase(t *testing.T) *sql.DB {
 	return db
 }
 
+func newTestAmount(t *testing.T, amount int64, currency domain.Currency) domain.Money {
+	t.Helper()
+
+	moneyAmount, err := domain.NewMoney(amount, currency)
+
+	if err != nil {
+		t.Fatalf("NewMoney() error = %v", err)
+	}
+
+	return moneyAmount
+}
+
 func TestRepository_SaveAndFindByID(t *testing.T) {
 	ctx := context.Background()
 	repository := newTestRepository(t)
 
-	payment, err := domain.New("test-payment-01")
+	payment, err := domain.New("test-payment-01", newTestAmount(t, 4999, "EUR"))
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -82,7 +94,7 @@ func TestRepository_SaveSamePaymentTwiceKeepsSingleRow(t *testing.T) {
 	ctx := context.Background()
 	repository := newTestRepository(t)
 
-	payment, err := domain.New("payment-conflict")
+	payment, err := domain.New("payment-conflict", newTestAmount(t, 4999, "EUR"))
 	if err != nil {
 		t.Fatalf("domain.New() error = %v", err)
 	}
@@ -121,7 +133,7 @@ func TestRepository_FindByIDRestoresAggregate(t *testing.T) {
 	ctx := context.Background()
 	repository := newTestRepository(t)
 
-	payment, err := domain.New("test-payment-04")
+	payment, err := domain.New("test-payment-04", newTestAmount(t, 4999, "EUR"))
 	if err != nil {
 		t.Fatalf("domain.New() error = %v", err)
 	}
@@ -158,11 +170,15 @@ func TestRepository_FindByIDRejectsInvalidPersistedAggregate(t *testing.T) {
 		INSERT INTO payments (
 		                      id,
 		                      status,
+		                      amount,
+		                      currency,
 		                      version
-			  ) VALUES (?, ?, ?)
+			  ) VALUES (?, ?, ?, ?, ?)
 			  `,
 		"test-payment-invalid",
 		"foobar",
+		1200,
+		"EUR",
 		1,
 	)
 
@@ -182,7 +198,7 @@ func TestRepository_CanUseTransaction(t *testing.T) {
 
 	db := newTestDatabase(t)
 
-	payment, err := domain.New("payment-transaction")
+	payment, err := domain.New("payment-transaction", newTestAmount(t, 4999, "EUR"))
 	if err != nil {
 		t.Fatalf("domain.New() error = %v", err)
 	}
@@ -219,7 +235,7 @@ func TestRepository_SaveNextVersionSucceeds(t *testing.T) {
 	ctx := context.Background()
 	repository := newTestRepository(t)
 
-	payment, err := domain.New("payment-versioned")
+	payment, err := domain.New("payment-versioned", newTestAmount(t, 4999, "EUR"))
 	if err != nil {
 		t.Fatalf("domain.New() error = %v", err)
 	}
@@ -228,11 +244,15 @@ func TestRepository_SaveNextVersionSucceeds(t *testing.T) {
 		t.Fatalf("Save(version 1) error = %v", err)
 	}
 
-	updatedPayment, err := domain.Restore(
-		payment.ID(),
-		payment.Status(),
-		2,
-	)
+	updatedPayment, err := domain.Restore(domain.PaymentState{
+		ID:               payment.ID(),
+		Amount:           payment.Amount(),
+		Status:           payment.Status(),
+		AuthorizedAmount: payment.AuthorizedAmount().Amount(),
+		CapturedAmount:   payment.CapturedAmount().Amount(),
+		RefundedAmount:   payment.RefundedAmount().Amount(),
+		Version:          2,
+	})
 	if err != nil {
 		t.Fatalf("Restore() error = %v", err)
 	}
@@ -255,7 +275,7 @@ func TestRepository_SaveRejectsStaleAggregate(t *testing.T) {
 	ctx := context.Background()
 	repository := newTestRepository(t)
 
-	payment, err := domain.New("payment-concurrent")
+	payment, err := domain.New("payment-concurrent", newTestAmount(t, 4999, "EUR"))
 	if err != nil {
 		t.Fatalf("domain.New() error = %v", err)
 	}
@@ -274,24 +294,31 @@ func TestRepository_SaveRejectsStaleAggregate(t *testing.T) {
 		t.Fatalf("second FindByID() error = %v", err)
 	}
 
-	firstUpdated, err := domain.Restore(
-		first.ID(),
-		first.Status(),
-		first.Version()+1,
-	)
+	firstUpdated, err := domain.Restore(domain.PaymentState{
+		ID:               first.ID(),
+		Amount:           first.Amount(),
+		Status:           first.Status(),
+		AuthorizedAmount: first.AuthorizedAmount().Amount(),
+		CapturedAmount:   first.CapturedAmount().Amount(),
+		RefundedAmount:   first.RefundedAmount().Amount(),
+		Version:          first.Version() + 1,
+	})
 	if err != nil {
 		t.Fatalf("Restore(first) error = %v", err)
 	}
 
-	secondUpdated, err := domain.Restore(
-		second.ID(),
-		second.Status(),
-		second.Version()+1,
-	)
+	secondUpdated, err := domain.Restore(domain.PaymentState{
+		ID:               second.ID(),
+		Amount:           second.Amount(),
+		Status:           second.Status(),
+		AuthorizedAmount: second.AuthorizedAmount().Amount(),
+		CapturedAmount:   second.CapturedAmount().Amount(),
+		RefundedAmount:   second.RefundedAmount().Amount(),
+		Version:          second.Version() + 1,
+	})
 	if err != nil {
 		t.Fatalf("Restore(second) error = %v", err)
 	}
-
 	if err := repository.Save(ctx, firstUpdated); err != nil {
 		t.Fatalf("Save(first) error = %v", err)
 	}
@@ -315,6 +342,51 @@ func TestRepository_SaveRejectsStaleAggregate(t *testing.T) {
 		t.Errorf(
 			"Version() = %d, want 2",
 			persisted.Version(),
+		)
+	}
+}
+
+func TestRepository_SavePersistsAggregateStateChanges(t *testing.T) {
+	ctx := context.Background()
+	repository := newTestRepository(t)
+
+	payment, err := domain.New(
+		"payment-authorized",
+		newTestAmount(t, 10000, "EUR"),
+	)
+	if err != nil {
+		t.Fatalf("domain.New() error = %v", err)
+	}
+
+	if err := repository.Save(ctx, payment); err != nil {
+		t.Fatalf("initial Save() error = %v", err)
+	}
+
+	if err := payment.Authorize(); err != nil {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+
+	if err := repository.Save(ctx, payment); err != nil {
+		t.Fatalf("updated Save() error = %v", err)
+	}
+
+	got, err := repository.FindByID(ctx, payment.ID())
+	if err != nil {
+		t.Fatalf("FindByID() error = %v", err)
+	}
+
+	if got.Status() != domain.StatusAuthorized {
+		t.Errorf(
+			"Status() = %q, want %q",
+			got.Status(),
+			domain.StatusAuthorized,
+		)
+	}
+
+	if got.AuthorizedAmount().Amount() != 10000 {
+		t.Errorf(
+			"AuthorizedAmount() = %d, want 10000",
+			got.AuthorizedAmount().Amount(),
 		)
 	}
 }

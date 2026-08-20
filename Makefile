@@ -2,7 +2,7 @@ APP_NAME := payment-sandbox
 CMD_PATH := ./cmd/payment-sandbox
 COVERAGE_FILE := coverage.out
 
-.PHONY: help build run test test-race coverage fmt lint tidy check clean
+.PHONY: help build run test test-race coverage fmt lint tidy check clean repomix
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*## "; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} /^[a-zA-Z_-]+:.*## / { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -49,3 +49,7 @@ check: ## Run local CI checks
 clean: ## Remove generated local artifacts
 	rm -rf bin
 	rm -f $(COVERAGE_FILE)
+
+repomix: ## Remove old repomix file and regenerate repomix
+	rm -f payment-sandbox.xml
+	npx repomix -o payment-sandbox.xml
