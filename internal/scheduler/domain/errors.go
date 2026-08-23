@@ -11,4 +11,8 @@ var (
 	ErrInvalidRetryTime       = errors.New("invalid retry time")
 	ErrInvalidJobTransition   = errors.New("invalid job transition")
 	ErrInvalidExecutionStatus = errors.New("invalid job execution status")
+	ErrInvalidAttempt         = errors.New("invalid retry attempt")
+	ErrInvalidMaxAttempts     = errors.New("invalid maximum attempts")
+	ErrInvalidRetryDelay      = errors.New("invalid retry delay")
+	ErrInvalidMaxDelay        = errors.New("invalid maximum retry delay")
 )
