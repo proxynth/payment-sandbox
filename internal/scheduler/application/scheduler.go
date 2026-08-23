@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	businessclock "proxynth/payment-sandbox/internal/platform/clock"
 	"proxynth/payment-sandbox/internal/scheduler/domain"
 )
 
@@ -17,10 +18,6 @@ type Dispatcher interface {
 	Dispatch(ctx context.Context, job *domain.Job) error
 }
 
-type Clock interface {
-	Now() time.Time
-}
-
 type Config struct {
 	Owner         string
 	BatchSize     int
@@ -30,7 +27,7 @@ type Config struct {
 type Scheduler struct {
 	repository    Repository
 	dispatcher    Dispatcher
-	clock         Clock
+	clock         businessclock.Clock
 	owner         string
 	batchSize     int
 	leaseDuration time.Duration
@@ -39,7 +36,7 @@ type Scheduler struct {
 func NewScheduler(
 	repository Repository,
 	dispatcher Dispatcher,
-	clock Clock,
+	clock businessclock.Clock,
 	config Config,
 ) (*Scheduler, error) {
 	if repository == nil {
@@ -108,10 +105,4 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 	}
 
 	return errors.Join(tickErrors...)
-}
-
-type SystemClock struct{}
-
-func (SystemClock) Now() time.Time {
-	return time.Now()
 }
