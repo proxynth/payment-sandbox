@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	businessclock "proxynth/payment-sandbox/internal/platform/clock"
 	"proxynth/payment-sandbox/internal/scheduler/domain"
 )
 
@@ -109,7 +110,7 @@ func TestNewScheduler_RejectsInvalidConfiguration(t *testing.T) {
 			clock := validClock
 			var repositoryArg Repository = &repository
 			var dispatcherArg Dispatcher = &dispatcher
-			var clockArg Clock = &clock
+			var clockArg businessclock.Clock = &clock
 
 			switch tt.name {
 			case "repository":
@@ -130,6 +131,47 @@ func TestNewScheduler_RejectsInvalidConfiguration(t *testing.T) {
 	}
 }
 
+func TestSchedulerTick_UsesVirtualClockForEligibility(t *testing.T) {
+	initial := time.Date(2026, time.August, 23, 12, 0, 0, 0, time.UTC)
+	virtualClock, err := businessclock.NewVirtualClock(initial)
+	if err != nil {
+		t.Fatalf("NewVirtualClock() error = %v", err)
+	}
+
+	job, err := domain.NewJob("job-1", "webhook.delivery", nil, initial.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("NewJob() error = %v", err)
+	}
+	repository := &fakeRepository{
+		jobs:              []*domain.Job{&job},
+		acquired:          map[domain.JobID]*domain.Job{"job-1": &job},
+		filterByExecution: true,
+	}
+	dispatcher := &fakeDispatcher{}
+	scheduler := newTestSchedulerWithClock(t, repository, dispatcher, virtualClock)
+
+	if err := scheduler.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick() before advancement error = %v", err)
+	}
+	if len(dispatcher.jobs) != 0 {
+		t.Fatalf("dispatched jobs before advancement = %d, want 0", len(dispatcher.jobs))
+	}
+
+	if err := virtualClock.Advance(5 * time.Minute); err != nil {
+		t.Fatalf("Advance() error = %v", err)
+	}
+	if err := scheduler.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick() after advancement error = %v", err)
+	}
+
+	if len(dispatcher.jobs) != 1 || dispatcher.jobs[0].ID() != "job-1" {
+		t.Fatalf("dispatched jobs after advancement = %v, want job-1", dispatcher.jobs)
+	}
+	if !repository.findAt.Equal(initial.Add(5 * time.Minute)) {
+		t.Fatalf("scheduler time = %v, want %v", repository.findAt, initial.Add(5*time.Minute))
+	}
+}
+
 type fixedClock struct {
 	now time.Time
 }
@@ -139,19 +181,29 @@ func (c fixedClock) Now() time.Time {
 }
 
 type fakeRepository struct {
-	jobs        []*domain.Job
-	acquired    map[domain.JobID]*domain.Job
-	acquireErrs map[domain.JobID]error
-	findErr     error
-	findAt      time.Time
-	findLimit   int
-	lastExpiry  time.Time
-	acquiredIDs []domain.JobID
+	jobs              []*domain.Job
+	acquired          map[domain.JobID]*domain.Job
+	acquireErrs       map[domain.JobID]error
+	findErr           error
+	findAt            time.Time
+	findLimit         int
+	lastExpiry        time.Time
+	acquiredIDs       []domain.JobID
+	filterByExecution bool
 }
 
 func (r *fakeRepository) FindExecutable(_ context.Context, at time.Time, limit int) ([]*domain.Job, error) {
 	r.findAt = at
 	r.findLimit = limit
+	if r.filterByExecution {
+		var executable []*domain.Job
+		for _, job := range r.jobs {
+			if job.Status() == domain.JobPending && !job.NextAttemptAt().After(at) {
+				executable = append(executable, job)
+			}
+		}
+		return executable, r.findErr
+	}
 	return r.jobs, r.findErr
 }
 
@@ -177,7 +229,13 @@ func (d *fakeDispatcher) Dispatch(_ context.Context, job *domain.Job) error {
 func newTestScheduler(t *testing.T, repository Repository, dispatcher Dispatcher, now time.Time) *Scheduler {
 	t.Helper()
 
-	scheduler, err := NewScheduler(repository, dispatcher, fixedClock{now: now}, Config{
+	return newTestSchedulerWithClock(t, repository, dispatcher, fixedClock{now: now})
+}
+
+func newTestSchedulerWithClock(t *testing.T, repository Repository, dispatcher Dispatcher, clock businessclock.Clock) *Scheduler {
+	t.Helper()
+
+	scheduler, err := NewScheduler(repository, dispatcher, clock, Config{
 		Owner:         "scheduler-1",
 		BatchSize:     2,
 		LeaseDuration: time.Minute,
