@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"proxynth/payment-sandbox/internal/platform/logging"
 )
@@ -23,6 +24,22 @@ func Load() (Config, error) {
 
 	if value := os.Getenv(envLogFormat); value != "" {
 		cfg.Logging.Format = logging.Format(value)
+	}
+
+	if value := os.Getenv(envDatabasePath); value != "" {
+		cfg.Database.Path = value
+	}
+
+	if value := os.Getenv(envDatabaseBusyTimeout); value != "" {
+		busyTimeout, err := time.ParseDuration(value)
+		if err != nil {
+			return Config{}, fmt.Errorf(
+				"parse database busy timeout %q: %w",
+				value,
+				err,
+			)
+		}
+		cfg.Database.BusyTimeout = busyTimeout
 	}
 
 	if err := validate(cfg); err != nil {
