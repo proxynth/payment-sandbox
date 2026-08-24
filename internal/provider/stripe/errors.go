@@ -1,8 +1,8 @@
 package stripe
 
-import "errors"
+import "proxynth/payment-sandbox/internal/provider/deterministic"
 
 var (
-	ErrInvalidRequest         = errors.New("invalid stripe provider request")
-	ErrInvalidOperationAmount = errors.New("invalid stripe provider operation amount")
+	ErrInvalidRequest         = deterministic.ErrInvalidRequest
+	ErrInvalidOperationAmount = deterministic.ErrInvalidOperationAmount
 )

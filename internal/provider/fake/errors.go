@@ -1,8 +1,8 @@
 package fake
 
-import "errors"
+import "proxynth/payment-sandbox/internal/provider/deterministic"
 
 var (
-	ErrInvalidRequest         = errors.New("invalid fake provider request")
-	ErrInvalidOperationAmount = errors.New("invalid fake provider operation amount")
+	ErrInvalidRequest         = deterministic.ErrInvalidRequest
+	ErrInvalidOperationAmount = deterministic.ErrInvalidOperationAmount
 )
