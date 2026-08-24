@@ -200,6 +200,43 @@ func TestRunner_RejectsNilProviderRegistry(t *testing.T) {
 	}
 }
 
+func TestRunnerReturnsProviderAsynchronousOperationsWithVirtualTime(t *testing.T) {
+	scheduledAt := time.Date(2026, 8, 24, 12, 5, 0, 0, time.UTC)
+	provider := &recordingProvider{result: providerdomain.OperationResult{
+		Outcome: providerdomain.OutcomeSucceeded,
+		AsyncOperations: []providerdomain.AsyncOperation{{
+			ID:          "job-1",
+			Type:        "provider.callback",
+			Payload:     []byte("payload"),
+			ScheduledAt: scheduledAt,
+		}},
+	}}
+	registry := providerdomain.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	runner := NewRunner(registry)
+	scenario := validScenario(nil, []replaydomain.Command{
+		{Type: replaydomain.CommandCreatePayment, PaymentID: "payment-1", Amount: testMoney(t, 100, "EUR")},
+		{Type: replaydomain.CommandAuthorize, PaymentID: "payment-1"},
+	})
+	result, err := runner.Run(context.Background(), scenario)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(provider.times) != 1 || !provider.times[0].Equal(scenario.InitialVirtualTime) {
+		t.Fatalf("provider virtual times = %v, want [%v]", provider.times, scenario.InitialVirtualTime)
+	}
+	if len(result.AsyncOperations) != 1 || result.AsyncOperations[0].ID != "job-1" {
+		t.Fatalf("async operations = %+v, want job-1", result.AsyncOperations)
+	}
+	provider.result.AsyncOperations[0].Payload[0] = 'X'
+	if string(result.AsyncOperations[0].Payload) != "payload" {
+		t.Fatalf("result payload = %q, provider mutation leaked across boundary", result.AsyncOperations[0].Payload)
+	}
+}
+
 func validScenario(
 	initialPayments []paymentdomain.PaymentState,
 	commands []replaydomain.Command,
@@ -241,6 +278,7 @@ type recordingProvider struct {
 	calls     []string
 	snapshots []providerdomain.PaymentSnapshot
 	contexts  []any
+	times     []time.Time
 }
 
 func (p *recordingProvider) Identity() providerdomain.ProviderIdentity {
@@ -248,29 +286,30 @@ func (p *recordingProvider) Identity() providerdomain.ProviderIdentity {
 }
 
 func (p *recordingProvider) Authorize(ctx context.Context, request providerdomain.AuthorizeRequest) (providerdomain.OperationResult, error) {
-	return p.record(ctx, "authorize", request.Payment)
+	return p.record(ctx, "authorize", request.Payment, request.At)
 }
 
 func (p *recordingProvider) Capture(ctx context.Context, request providerdomain.CaptureRequest) (providerdomain.OperationResult, error) {
-	return p.record(ctx, "capture", request.Payment)
+	return p.record(ctx, "capture", request.Payment, request.At)
 }
 
 func (p *recordingProvider) Refund(ctx context.Context, request providerdomain.RefundRequest) (providerdomain.OperationResult, error) {
-	return p.record(ctx, "refund", request.Payment)
+	return p.record(ctx, "refund", request.Payment, request.At)
 }
 
 func (p *recordingProvider) Cancel(ctx context.Context, request providerdomain.CancelRequest) (providerdomain.OperationResult, error) {
-	return p.record(ctx, "cancel", request.Payment)
+	return p.record(ctx, "cancel", request.Payment, request.At)
 }
 
-func (p *recordingProvider) record(ctx context.Context, operation string, snapshot providerdomain.PaymentSnapshot) (providerdomain.OperationResult, error) {
+func (p *recordingProvider) record(ctx context.Context, operation string, snapshot providerdomain.PaymentSnapshot, at time.Time) (providerdomain.OperationResult, error) {
 	p.calls = append(p.calls, operation)
 	p.snapshots = append(p.snapshots, snapshot)
 	p.contexts = append(p.contexts, ctx.Value(providerContextKey{}))
+	p.times = append(p.times, at)
 	if p.err != nil {
 		return providerdomain.OperationResult{}, p.err
 	}
-	if p.result == (providerdomain.OperationResult{}) {
+	if p.result.Outcome == "" {
 		return providerdomain.OperationResult{Outcome: providerdomain.OutcomeSucceeded}, nil
 	}
 	return p.result, nil
