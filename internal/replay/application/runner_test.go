@@ -3,11 +3,14 @@ package application
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
+	providerfake "proxynth/payment-sandbox/internal/provider/fake"
 	replaydomain "proxynth/payment-sandbox/internal/replay/domain"
 )
 
@@ -28,7 +31,7 @@ func TestRunner_ExecutesCommandsInOrder(t *testing.T) {
 		},
 	}
 
-	result, err := NewRunner().Run(context.Background(), scenario)
+	result, err := testRunner(t).Run(context.Background(), scenario)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -69,7 +72,7 @@ func TestRunner_RestoresInitialState(t *testing.T) {
 		{Type: replaydomain.CommandCapture, PaymentID: initial.ID, Amount: testMoney(t, 4000, "EUR")},
 	})
 
-	result, err := NewRunner().Run(context.Background(), scenario)
+	result, err := testRunner(t).Run(context.Background(), scenario)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -85,14 +88,14 @@ func TestRunner_StopsAtFirstCommandError(t *testing.T) {
 		{Type: replaydomain.CommandCreatePayment, PaymentID: "should-not-exist", Amount: testMoney(t, 100, "EUR")},
 	})
 
-	_, err := NewRunner().Run(context.Background(), scenario)
+	_, err := testRunner(t).Run(context.Background(), scenario)
 	if !errors.Is(err, paymentapplication.ErrPaymentNotFound) {
 		t.Fatalf("Run() error = %v, want %v", err, paymentapplication.ErrPaymentNotFound)
 	}
 }
 
 func TestRunner_RejectsInvalidScenario(t *testing.T) {
-	_, err := NewRunner().Run(context.Background(), replaydomain.Scenario{})
+	_, err := testRunner(t).Run(context.Background(), replaydomain.Scenario{})
 	if !errors.Is(err, replaydomain.ErrInvalidScenarioID) {
 		t.Fatalf("Run() error = %v, want %v", err, replaydomain.ErrInvalidScenarioID)
 	}
@@ -102,9 +105,98 @@ func TestRunner_RespectsCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := NewRunner().Run(ctx, validScenario(nil, nil))
+	_, err := testRunner(t).Run(ctx, validScenario(nil, nil))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run() error = %v, want %v", err, context.Canceled)
+	}
+}
+
+func TestRunner_ExecutesProviderOperationsBeforeDomainTransitions(t *testing.T) {
+	amount := testMoney(t, 10000, "EUR")
+	provider := &recordingProvider{}
+	registry := providerdomain.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	runner := NewRunner(registry)
+	ctx := context.WithValue(context.Background(), providerContextKey{}, "replay")
+	scenario := validScenario(nil, []replaydomain.Command{
+		{Type: replaydomain.CommandCreatePayment, PaymentID: "payment-1", Amount: amount},
+		{Type: replaydomain.CommandAuthorize, PaymentID: "payment-1"},
+		{Type: replaydomain.CommandCapture, PaymentID: "payment-1", Amount: amount},
+		{Type: replaydomain.CommandRefund, PaymentID: "payment-1", Amount: amount},
+	})
+
+	if _, err := runner.Run(ctx, scenario); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	wantOperations := []string{"authorize", "capture", "refund"}
+	if got := provider.operations(); !reflect.DeepEqual(got, wantOperations) {
+		t.Fatalf("provider operations = %v, want %v", got, wantOperations)
+	}
+	if provider.snapshots[0].Status != paymentdomain.StatusPending || provider.snapshots[1].Status != paymentdomain.StatusAuthorized || provider.snapshots[2].Status != paymentdomain.StatusCaptured {
+		t.Fatalf("provider snapshots = %+v, want pre-transition states", provider.snapshots)
+	}
+	for _, got := range provider.contexts {
+		if got != "replay" {
+			t.Errorf("provider context value = %v, want replay", got)
+		}
+	}
+}
+
+func TestRunner_ResolvesProviderBeforeExecutingCommands(t *testing.T) {
+	runner := testRunner(t)
+	scenario := validScenario(nil, nil)
+	scenario.Provider.ID = "unknown"
+
+	_, err := runner.Run(context.Background(), scenario)
+	if !errors.Is(err, providerdomain.ErrProviderNotFound) {
+		t.Fatalf("Run() error = %v, want %v", err, providerdomain.ErrProviderNotFound)
+	}
+}
+
+func TestRunner_PropagatesProviderError(t *testing.T) {
+	wantErr := errors.New("provider unavailable")
+	provider := &recordingProvider{err: wantErr}
+	registry := providerdomain.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	runner := NewRunner(registry)
+	scenario := validScenario(nil, []replaydomain.Command{
+		{Type: replaydomain.CommandCreatePayment, PaymentID: "payment-1", Amount: testMoney(t, 100, "EUR")},
+		{Type: replaydomain.CommandAuthorize, PaymentID: "payment-1"},
+	})
+
+	_, err := runner.Run(context.Background(), scenario)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Run() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestRunner_RejectsInvalidProviderResult(t *testing.T) {
+	provider := &recordingProvider{result: providerdomain.OperationResult{Outcome: "unknown"}}
+	registry := providerdomain.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	runner := NewRunner(registry)
+	scenario := validScenario(nil, []replaydomain.Command{
+		{Type: replaydomain.CommandCreatePayment, PaymentID: "payment-1", Amount: testMoney(t, 100, "EUR")},
+		{Type: replaydomain.CommandAuthorize, PaymentID: "payment-1"},
+	})
+
+	_, err := runner.Run(context.Background(), scenario)
+	if !errors.Is(err, providerdomain.ErrInvalidOperationResult) {
+		t.Fatalf("Run() error = %v, want %v", err, providerdomain.ErrInvalidOperationResult)
+	}
+}
+
+func TestRunner_RejectsNilProviderRegistry(t *testing.T) {
+	_, err := NewRunner(nil).Run(context.Background(), validScenario(nil, nil))
+	if !errors.Is(err, ErrNilProviderRegistry) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrNilProviderRegistry)
 	}
 }
 
@@ -130,4 +222,60 @@ func testMoney(t *testing.T, amount int64, currency paymentdomain.Currency) paym
 	}
 
 	return money
+}
+
+func testRunner(t *testing.T) *Runner {
+	t.Helper()
+	registry := providerdomain.NewRegistry()
+	if err := registry.Register(providerfake.New()); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	return NewRunner(registry)
+}
+
+type providerContextKey struct{}
+
+type recordingProvider struct {
+	err       error
+	result    providerdomain.OperationResult
+	calls     []string
+	snapshots []providerdomain.PaymentSnapshot
+	contexts  []any
+}
+
+func (p *recordingProvider) Identity() providerdomain.ProviderIdentity {
+	return providerdomain.ProviderIdentity{ID: "fake"}
+}
+
+func (p *recordingProvider) Authorize(ctx context.Context, request providerdomain.AuthorizeRequest) (providerdomain.OperationResult, error) {
+	return p.record(ctx, "authorize", request.Payment)
+}
+
+func (p *recordingProvider) Capture(ctx context.Context, request providerdomain.CaptureRequest) (providerdomain.OperationResult, error) {
+	return p.record(ctx, "capture", request.Payment)
+}
+
+func (p *recordingProvider) Refund(ctx context.Context, request providerdomain.RefundRequest) (providerdomain.OperationResult, error) {
+	return p.record(ctx, "refund", request.Payment)
+}
+
+func (p *recordingProvider) Cancel(ctx context.Context, request providerdomain.CancelRequest) (providerdomain.OperationResult, error) {
+	return p.record(ctx, "cancel", request.Payment)
+}
+
+func (p *recordingProvider) record(ctx context.Context, operation string, snapshot providerdomain.PaymentSnapshot) (providerdomain.OperationResult, error) {
+	p.calls = append(p.calls, operation)
+	p.snapshots = append(p.snapshots, snapshot)
+	p.contexts = append(p.contexts, ctx.Value(providerContextKey{}))
+	if p.err != nil {
+		return providerdomain.OperationResult{}, p.err
+	}
+	if p.result == (providerdomain.OperationResult{}) {
+		return providerdomain.OperationResult{Outcome: providerdomain.OutcomeSucceeded}, nil
+	}
+	return p.result, nil
+}
+
+func (p *recordingProvider) operations() []string {
+	return p.calls
 }

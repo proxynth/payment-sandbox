@@ -9,6 +9,7 @@ import (
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 	"proxynth/payment-sandbox/internal/platform/clock"
+	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	replaydomain "proxynth/payment-sandbox/internal/replay/domain"
 )
 
@@ -21,12 +22,19 @@ type Result struct {
 	Payments                   []paymentdomain.PaymentState
 }
 
+// ProviderRegistry resolves the provider selected by a scenario.
+type ProviderRegistry interface {
+	Resolve(providerdomain.ProviderID) (providerdomain.Provider, error)
+}
+
 // Runner executes one scenario against the production payment application
 // services and an execution-scoped in-memory repository.
-type Runner struct{}
+type Runner struct {
+	providers ProviderRegistry
+}
 
-func NewRunner() *Runner {
-	return &Runner{}
+func NewRunner(providers ProviderRegistry) *Runner {
+	return &Runner{providers: providers}
 }
 
 func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Result, error) {
@@ -35,6 +43,14 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 	}
 
 	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	if r.providers == nil {
+		return Result{}, ErrNilProviderRegistry
+	}
+
+	provider, err := r.providers.Resolve(scenario.Provider.ID)
+	if err != nil {
 		return Result{}, err
 	}
 
@@ -53,7 +69,7 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 		repository.payments[payment.ID()] = payment
 	}
 
-	services := commandServices{repository: repository}
+	services := commandServices{repository: repository, provider: provider}
 	for index, command := range scenario.Commands {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
@@ -80,6 +96,7 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 
 type commandServices struct {
 	repository *memoryRepository
+	provider   providerdomain.Provider
 }
 
 func (s commandServices) execute(
@@ -98,13 +115,27 @@ func (s commandServices) execute(
 		)
 		return err
 	case replaydomain.CommandAuthorize:
-		_, err := paymentapplication.NewAuthorizePayment(s.repository).Execute(
+		payment, err := s.repository.FindByID(ctx, command.PaymentID)
+		if err != nil {
+			return err
+		}
+		if err := s.authorize(ctx, payment); err != nil {
+			return err
+		}
+		_, err = paymentapplication.NewAuthorizePayment(s.repository).Execute(
 			ctx,
 			paymentapplication.AuthorizePaymentCommand{PaymentID: command.PaymentID},
 		)
 		return err
 	case replaydomain.CommandCapture:
-		_, err := paymentapplication.NewCapturePayment(s.repository).Execute(
+		payment, err := s.repository.FindByID(ctx, command.PaymentID)
+		if err != nil {
+			return err
+		}
+		if err := s.capture(ctx, payment, command.Amount); err != nil {
+			return err
+		}
+		_, err = paymentapplication.NewCapturePayment(s.repository).Execute(
 			ctx,
 			paymentapplication.CapturePaymentCommand{
 				PaymentID: command.PaymentID,
@@ -114,7 +145,14 @@ func (s commandServices) execute(
 		)
 		return err
 	case replaydomain.CommandRefund:
-		_, err := paymentapplication.NewRefundPayment(s.repository).Execute(
+		payment, err := s.repository.FindByID(ctx, command.PaymentID)
+		if err != nil {
+			return err
+		}
+		if err := s.refund(ctx, payment, command.Amount); err != nil {
+			return err
+		}
+		_, err = paymentapplication.NewRefundPayment(s.repository).Execute(
 			ctx,
 			paymentapplication.RefundPaymentCommand{
 				PaymentID: command.PaymentID,
@@ -124,7 +162,14 @@ func (s commandServices) execute(
 		)
 		return err
 	case replaydomain.CommandCancel:
-		_, err := paymentapplication.NewCancelPayment(s.repository).Execute(
+		payment, err := s.repository.FindByID(ctx, command.PaymentID)
+		if err != nil {
+			return err
+		}
+		if err := s.cancel(ctx, payment); err != nil {
+			return err
+		}
+		_, err = paymentapplication.NewCancelPayment(s.repository).Execute(
 			ctx,
 			paymentapplication.CancelPaymentCommand{PaymentID: command.PaymentID},
 		)
@@ -132,6 +177,49 @@ func (s commandServices) execute(
 	default:
 		return replaydomain.ErrInvalidCommand
 	}
+}
+
+func (s commandServices) authorize(ctx context.Context, payment *paymentdomain.Payment) error {
+	return validateProviderResult(s.provider.Authorize(ctx, providerdomain.AuthorizeRequest{
+		Payment: paymentSnapshot(payment),
+	}))
+}
+
+func (s commandServices) capture(ctx context.Context, payment *paymentdomain.Payment, amount paymentdomain.Money) error {
+	return validateProviderResult(s.provider.Capture(ctx, providerdomain.CaptureRequest{
+		Payment: paymentSnapshot(payment),
+		Amount:  amount,
+	}))
+}
+
+func (s commandServices) refund(ctx context.Context, payment *paymentdomain.Payment, amount paymentdomain.Money) error {
+	return validateProviderResult(s.provider.Refund(ctx, providerdomain.RefundRequest{
+		Payment: paymentSnapshot(payment),
+		Amount:  amount,
+	}))
+}
+
+func (s commandServices) cancel(ctx context.Context, payment *paymentdomain.Payment) error {
+	return validateProviderResult(s.provider.Cancel(ctx, providerdomain.CancelRequest{
+		Payment: paymentSnapshot(payment),
+	}))
+}
+
+func paymentSnapshot(payment *paymentdomain.Payment) providerdomain.PaymentSnapshot {
+	return providerdomain.PaymentSnapshot{
+		ID:      payment.ID(),
+		Amount:  payment.Amount(),
+		Status:  payment.Status(),
+		Version: payment.Version(),
+	}
+}
+
+func validateProviderResult(result providerdomain.OperationResult, err error) error {
+	if err != nil {
+		return err
+	}
+
+	return result.Validate()
 }
 
 type memoryRepository struct {
