@@ -11,9 +11,14 @@ type DatabaseConfig struct {
 	BusyTimeout time.Duration
 }
 
+type HTTPConfig struct {
+	Address string
+}
+
 type Config struct {
 	Logging  logging.Config
 	Database DatabaseConfig
+	HTTP     HTTPConfig
 }
 
 func Default() Config {
@@ -25,6 +30,9 @@ func Default() Config {
 		Database: DatabaseConfig{
 			Path:        "payment-sandbox.db",
 			BusyTimeout: 5 * time.Second,
+		},
+		HTTP: HTTPConfig{
+			Address: ":8080",
 		},
 	}
 }

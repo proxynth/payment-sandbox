@@ -98,6 +98,7 @@ Available variables:
 |---|---|---|
 | `PAYMENT_SANDBOX_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `PAYMENT_SANDBOX_LOG_FORMAT` | `text` | `text`, `json` |
+| `PAYMENT_SANDBOX_HTTP_ADDRESS` | `:8080` | HTTP listen address |
 
 Example:
 

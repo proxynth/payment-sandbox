@@ -12,6 +12,7 @@ func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("PAYMENT_SANDBOX_LOG_FORMAT", "")
 	t.Setenv("PAYMENT_SANDBOX_DATABASE_PATH", "")
 	t.Setenv("PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT", "")
+	t.Setenv("PAYMENT_SANDBOX_HTTP_ADDRESS", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -32,6 +33,9 @@ func TestLoad_Defaults(t *testing.T) {
 			cfg.Logging.Format,
 			logging.FormatText)
 	}
+	if cfg.HTTP.Address != ":8080" {
+		t.Errorf("HTTP.Address = %q, want %q", cfg.HTTP.Address, ":8080")
+	}
 }
 
 func TestLoad_OverridesDatabaseConfiguration(t *testing.T) {
@@ -48,6 +52,27 @@ func TestLoad_OverridesDatabaseConfiguration(t *testing.T) {
 	}
 	if cfg.Database.BusyTimeout != 250*time.Millisecond {
 		t.Errorf("Database.BusyTimeout = %v, want %v", cfg.Database.BusyTimeout, 250*time.Millisecond)
+	}
+}
+
+func TestLoad_OverridesHTTPConfiguration(t *testing.T) {
+	t.Setenv("PAYMENT_SANDBOX_HTTP_ADDRESS", "127.0.0.1:9090")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.HTTP.Address != "127.0.0.1:9090" {
+		t.Errorf("HTTP.Address = %q, want %q", cfg.HTTP.Address, "127.0.0.1:9090")
+	}
+}
+
+func TestLoad_RejectsEmptyHTTPAddress(t *testing.T) {
+	cfg := Default()
+	cfg.HTTP.Address = ""
+	if err := validate(cfg); err == nil {
+		t.Fatal("validate() error = nil, want empty HTTP address error")
 	}
 }
 
