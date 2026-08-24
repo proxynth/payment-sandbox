@@ -52,8 +52,16 @@ func (s *Server) Handle(method, path string, handler http.Handler) error {
 	return s.router.Handle(method, path, handler)
 }
 
+func (s *Server) HandlePrefix(method, prefix string, handler http.Handler) error {
+	return s.router.HandlePrefix(method, prefix, handler)
+}
+
 func (s *Server) Handler() http.Handler {
 	return s.router
+}
+
+func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	s.router.ServeHTTP(writer, request)
 }
 
 func (s *Server) ListenAndServe() error {
@@ -69,14 +77,14 @@ func (s *Server) SetReady(ready bool) {
 }
 
 func (s *Server) live(writer http.ResponseWriter, _ *http.Request) {
-	writeJSON(writer, http.StatusOK, HealthResponse{Status: "alive"})
+	WriteJSON(writer, http.StatusOK, HealthResponse{Status: "alive"})
 }
 
 func (s *Server) readyCheck(writer http.ResponseWriter, _ *http.Request) {
 	if !s.ready.Load() {
-		writeJSON(writer, http.StatusServiceUnavailable, HealthResponse{Status: "not_ready"})
+		WriteJSON(writer, http.StatusServiceUnavailable, HealthResponse{Status: "not_ready"})
 		return
 	}
 
-	writeJSON(writer, http.StatusOK, HealthResponse{Status: "ready"})
+	WriteJSON(writer, http.StatusOK, HealthResponse{Status: "ready"})
 }

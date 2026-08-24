@@ -85,7 +85,7 @@ func TestRouter_HandlesRoutesAndProtocolErrors(t *testing.T) {
 		if request.Context().Value(requestIDKey{}) != "req-1" {
 			t.Error("request context was not propagated")
 		}
-		writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+		WriteJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 	})); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
