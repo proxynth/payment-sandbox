@@ -34,27 +34,7 @@ func NewBusinessEvent(
 	correlationID string,
 	causationID EventID,
 ) (BusinessEvent, error) {
-	if id == "" {
-		return BusinessEvent{}, ErrInvalidEventID
-	}
-
-	if aggregateID == "" {
-		return BusinessEvent{}, ErrInvalidAggregateID
-	}
-
-	if !eventType.Valid() {
-		return BusinessEvent{}, ErrInvalidEventType
-	}
-
-	if occurredAt.IsZero() {
-		return BusinessEvent{}, ErrInvalidEventTimestamp
-	}
-
-	if aggregateVersion == 0 {
-		return BusinessEvent{}, ErrInvalidAggregateVersion
-	}
-
-	return BusinessEvent{
+	event := BusinessEvent{
 		id:               id,
 		aggregateID:      aggregateID,
 		eventType:        eventType,
@@ -62,7 +42,36 @@ func NewBusinessEvent(
 		aggregateVersion: aggregateVersion,
 		correlationID:    correlationID,
 		causationID:      causationID,
-	}, nil
+	}
+	if err := event.Validate(); err != nil {
+		return BusinessEvent{}, err
+	}
+
+	return event, nil
+}
+
+func (e BusinessEvent) Validate() error {
+	if e.id == "" {
+		return ErrInvalidEventID
+	}
+
+	if e.aggregateID == "" {
+		return ErrInvalidAggregateID
+	}
+
+	if !e.eventType.Valid() {
+		return ErrInvalidEventType
+	}
+
+	if e.occurredAt.IsZero() {
+		return ErrInvalidEventTimestamp
+	}
+
+	if e.aggregateVersion == 0 {
+		return ErrInvalidAggregateVersion
+	}
+
+	return nil
 }
 
 func (t EventType) Valid() bool {
