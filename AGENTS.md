@@ -56,9 +56,10 @@ Resolve every formatting, linting, build, test, and race-detector failure before
 
 ## Pull request workflow
 
-1. Push the feature branch and create a pull request linked to the Linear ticket.
-2. Report the pull request and its summary, then stop. The user handles review, GitHub checks, and merge.
-3. The agent must not wait for or merge pull requests.
-4. Wait for the user to report that the pull request was merged.
-5. After notification, fetch `main`, verify that it contains the merge commit, and confirm the working tree state.
-6. Link the pull request in Linear and move the ticket to **Done** only after the merge is confirmed.
+1. Push the feature branch and create the pull request.
+2. Link the pull request to the Linear ticket immediately after creating it, so the ticket tracks the review in progress.
+3. Report the pull request and its summary, then stop. The user handles review, GitHub checks, and merge.
+4. The agent must not wait for or merge pull requests.
+5. Wait for the user to report that the pull request was merged.
+6. After notification, fetch `main`, verify that it contains the merge commit, and confirm the working tree state.
+7. Move the ticket to **Done** only after the merge is confirmed; the pull request link should already exist.
