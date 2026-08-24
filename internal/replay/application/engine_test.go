@@ -72,7 +72,7 @@ func TestReplayEngine_PropagatesRunnerError(t *testing.T) {
 }
 
 func TestReplayEngine_RepeatedRunsAreDeterministicAndIsolated(t *testing.T) {
-	runner := NewRunner()
+	runner := testRunner(t)
 	engine, err := NewReplayEngine(runner)
 	if err != nil {
 		t.Fatalf("NewReplayEngine() error = %v", err)
