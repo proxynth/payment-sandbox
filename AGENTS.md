@@ -59,7 +59,7 @@ Resolve every formatting, linting, build, test, and race-detector failure before
 1. Push the feature branch and create a pull request linked to the Linear ticket.
 2. Wait for all GitHub checks to pass.
 3. Report the pull request, its summary, and the CI results, then stop for user review.
-4. Do not merge automatically. Merge only after an explicit user instruction such as `merge PR #123`, even if the checks are green or the user has reviewed the code elsewhere.
-5. After explicit approval, merge using squash merge when appropriate.
-6. Confirm that `main` contains the merge commit.
+4. The user reviews and merges the pull request themselves. The agent must not merge pull requests.
+5. Wait for the user to report that the pull request was merged.
+6. After notification, fetch `main`, verify that it contains the merge commit, and confirm the working tree state.
 7. Link the pull request in Linear and move the ticket to **Done** only after the merge is confirmed.
