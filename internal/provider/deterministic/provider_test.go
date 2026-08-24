@@ -3,6 +3,7 @@ package deterministic
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
@@ -69,7 +70,7 @@ func TestProvider_OperationsReturnDeterministicSuccess(t *testing.T) {
 				t.Fatalf("second call error = %v", err)
 			}
 
-			if first != second {
+			if !reflect.DeepEqual(first, second) {
 				t.Fatalf("results differ: first = %+v, second = %+v", first, second)
 			}
 

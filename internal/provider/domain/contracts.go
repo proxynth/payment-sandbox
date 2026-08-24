@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 )
@@ -52,20 +53,41 @@ func (snapshot PaymentSnapshot) Validate() error {
 
 type AuthorizeRequest struct {
 	Payment PaymentSnapshot
+	At      time.Time
 }
 
 type CaptureRequest struct {
 	Payment PaymentSnapshot
 	Amount  paymentdomain.Money
+	At      time.Time
 }
 
 type RefundRequest struct {
 	Payment PaymentSnapshot
 	Amount  paymentdomain.Money
+	At      time.Time
 }
 
 type CancelRequest struct {
 	Payment PaymentSnapshot
+	At      time.Time
+}
+
+// AsyncOperation describes deterministic future work requested by a provider.
+// The runtime is responsible for persisting and executing it.
+type AsyncOperation struct {
+	ID          string
+	Type        string
+	Payload     []byte
+	ScheduledAt time.Time
+}
+
+func (operation AsyncOperation) Validate() error {
+	if operation.ID == "" || operation.Type == "" || operation.ScheduledAt.IsZero() {
+		return ErrInvalidAsyncOperation
+	}
+
+	return nil
 }
 
 // OperationOutcome describes the business outcome returned by a provider.
@@ -91,11 +113,23 @@ func (outcome OperationOutcome) Valid() bool {
 type OperationResult struct {
 	Outcome           OperationOutcome
 	ProviderReference string
+	AsyncOperations   []AsyncOperation
 }
 
 func (result OperationResult) Validate() error {
 	if !result.Outcome.Valid() {
 		return ErrInvalidOperationResult
+	}
+
+	seen := make(map[string]struct{}, len(result.AsyncOperations))
+	for _, operation := range result.AsyncOperations {
+		if err := operation.Validate(); err != nil {
+			return err
+		}
+		if _, exists := seen[operation.ID]; exists {
+			return ErrInvalidAsyncOperation
+		}
+		seen[operation.ID] = struct{}{}
 	}
 
 	return nil

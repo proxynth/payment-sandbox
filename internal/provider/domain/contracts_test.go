@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 )
@@ -76,6 +77,30 @@ func TestOperationResult_RejectsUnknownOutcome(t *testing.T) {
 
 	if !errors.Is(err, ErrInvalidOperationResult) {
 		t.Fatalf("Validate() error = %v, want %v", err, ErrInvalidOperationResult)
+	}
+}
+
+func TestOperationResult_ValidatesAsynchronousOperations(t *testing.T) {
+	valid := AsyncOperation{
+		ID:          "job-1",
+		Type:        "provider.callback",
+		Payload:     []byte("payload"),
+		ScheduledAt: time.Date(2026, 8, 24, 12, 5, 0, 0, time.UTC),
+	}
+	if err := (OperationResult{Outcome: OutcomeSucceeded, AsyncOperations: []AsyncOperation{valid}}).Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	tests := []OperationResult{
+		{Outcome: OutcomeSucceeded, AsyncOperations: []AsyncOperation{{Type: "callback", ScheduledAt: valid.ScheduledAt}}},
+		{Outcome: OutcomeSucceeded, AsyncOperations: []AsyncOperation{{ID: "job-1", ScheduledAt: valid.ScheduledAt}}},
+		{Outcome: OutcomeSucceeded, AsyncOperations: []AsyncOperation{{ID: "job-1", Type: "callback"}}},
+		{Outcome: OutcomeSucceeded, AsyncOperations: []AsyncOperation{valid, valid}},
+	}
+	for _, result := range tests {
+		if err := result.Validate(); !errors.Is(err, ErrInvalidAsyncOperation) {
+			t.Errorf("Validate() error = %v, want %v", err, ErrInvalidAsyncOperation)
+		}
 	}
 }
 
