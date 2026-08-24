@@ -13,6 +13,7 @@ const (
 	envLogFormat           = "PAYMENT_SANDBOX_LOG_FORMAT"
 	envDatabasePath        = "PAYMENT_SANDBOX_DATABASE_PATH"
 	envDatabaseBusyTimeout = "PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT"
+	envHTTPAddress         = "PAYMENT_SANDBOX_HTTP_ADDRESS"
 )
 
 func Load() (Config, error) {
@@ -42,6 +43,10 @@ func Load() (Config, error) {
 		cfg.Database.BusyTimeout = busyTimeout
 	}
 
+	if value := os.Getenv(envHTTPAddress); value != "" {
+		cfg.HTTP.Address = value
+	}
+
 	if err := validate(cfg); err != nil {
 		return Config{}, fmt.Errorf("validate configuration: %w", err)
 	}
@@ -56,6 +61,10 @@ func validate(cfg Config) error {
 
 	if !cfg.Logging.Format.Valid() {
 		return fmt.Errorf("unsupported log format %q", cfg.Logging.Format)
+	}
+
+	if cfg.HTTP.Address == "" {
+		return fmt.Errorf("HTTP address must not be empty")
 	}
 
 	return nil
