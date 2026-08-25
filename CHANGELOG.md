@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/proxynth/payment-sandbox/compare/v1.0.0...v1.1.0) (2026-08-25)
+
+
+### Features
+
+* :arrows_counterclockwise: implement payment saga orchestrator ([#85](https://github.com/proxynth/payment-sandbox/issues/85)) ([8e7171e](https://github.com/proxynth/payment-sandbox/commit/8e7171e199d86be25b33e62a20d24595467b5c7b))
+
+
+### Bug Fixes
+
+* :bookmark: reset release please manifest ([#84](https://github.com/proxynth/payment-sandbox/issues/84)) ([c897d1c](https://github.com/proxynth/payment-sandbox/commit/c897d1c1e31f21930c150c9f5cf02f0ca7efa3d4))
+* :bug: reconcile release publication state ([#86](https://github.com/proxynth/payment-sandbox/issues/86)) ([647e895](https://github.com/proxynth/payment-sandbox/commit/647e8953c3843321bcddf6b781e765d225b1d848))
+
 ## [0.3.1](https://github.com/proxynth/payment-sandbox/compare/v0.3.0...v0.3.1) (2026-08-25)
 
 
