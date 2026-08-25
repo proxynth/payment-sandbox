@@ -334,4 +334,5 @@ Early discussions should focus on:
 
 ## License
 
-The project license has not yet been selected.
+Payment Sandbox is licensed under the MIT License. See [LICENSE](LICENSE) for
+the complete license text.
