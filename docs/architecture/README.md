@@ -32,6 +32,8 @@ Implementation
 
 # Architecture at a Glance 
 
+For the rendered canonical views, see [Architecture Diagrams](diagrams.md).
+
 ```
                     Payment Sandbox
 
@@ -178,6 +180,15 @@ Each decision introduces concepts that are reused by subsequent ADRs, allowing t
 ---
 
 # Design Philosophy
+
+## Canonical diagrams
+
+The main architecture views are maintained in [Architecture Diagrams](diagrams.md):
+
+- bounded contexts and dependency direction;
+- deterministic replay;
+- durable asynchronous execution;
+- provider plugin boundaries.
 
 Payment Sandbox intentionally optimises for:
 
