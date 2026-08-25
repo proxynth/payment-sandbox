@@ -23,6 +23,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout main for release metadata
+        if: ${{ github.ref == 'refs/heads/main' }}
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 1
+
       - name: Create or update release pull request
         if: ${{ github.ref == 'refs/heads/main' }}
         id: release
