@@ -71,26 +71,33 @@ jobs:
               echo "Release ${tag} already exists."
               echo "tag_created=true" >> "$GITHUB_OUTPUT"
             else
-              echo "Release tag ${tag} exists without a release; creating a draft release."
+              echo "Release tag ${tag} exists without a release; creating the release."
               gh release create "${tag}" \
                 --repo "$GITHUB_REPOSITORY" \
                 --target "$release_sha" \
                 --title "${tag}" \
-                --notes "" \
-                --draft
+                --notes ""
               echo "tag_created=true" >> "$GITHUB_OUTPUT"
             fi
             exit 0
           fi
 
-          gh release create "${tag}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$release_sha" \
-            --title "${tag}" \
-            --notes "" \
-            --draft
+          if gh release view "${tag}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release ${tag} exists without a Git tag; publishing it with the expected tag."
+            gh release edit "${tag}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --tag "${tag}" \
+              --target "$release_sha" \
+              --draft=false
+          else
+            gh release create "${tag}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$release_sha" \
+              --title "${tag}" \
+              --notes ""
+          fi
 
-          echo "Created draft release ${tag} for ${release_sha}."
+          echo "Created release tag ${tag} for ${release_sha}."
           echo "tag_created=true" >> "$GITHUB_OUTPUT"
 
       - name: Ensure a draft release exists for a manually pushed tag
