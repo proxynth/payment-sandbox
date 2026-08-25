@@ -29,6 +29,39 @@ jobs:
           ref: main
           fetch-depth: 1
 
+      - name: Reconcile obsolete release pull requests
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          baseline_version=$(jq -r '."."' .release-please-manifest.json)
+
+          gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state merged \
+            --base main \
+            --label "autorelease: pending" \
+            --limit 100 \
+            --json number,title \
+            --jq '.[] | [.number, .title] | @tsv' |
+          while IFS=$'\t' read -r number title; do
+            version=$(sed -nE 's/^chore: :bookmark: release ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' <<< "$title")
+            if [[ -z "$version" ]]; then
+              continue
+            fi
+
+            latest=$(printf '%s\n' "$version" "$baseline_version" | sort -V | tail -n 1)
+            if [[ "$version" != "$latest" ]]; then
+              echo "Marking obsolete release PR #${number} (${version}) as tagged; baseline is ${baseline_version}."
+              gh pr edit "$number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --remove-label "autorelease: pending" \
+                --add-label "autorelease: tagged"
+            fi
+          done
+
       - name: Create or update release pull request
         if: ${{ github.ref == 'refs/heads/main' }}
         id: release
@@ -47,24 +80,33 @@ jobs:
         run: |
           set -euo pipefail
 
-          release_sha=$(gh pr list \
+          release_pr=$(gh pr list \
             --repo "$GITHUB_REPOSITORY" \
             --state merged \
             --base main \
+            --label "autorelease: pending" \
             --limit 100 \
-            --json mergeCommit,title,mergedAt \
-            --jq 'sort_by(.mergedAt) | map(select(.title | startswith("chore: :bookmark: release "))) | last | .mergeCommit.oid // empty')
+            --json number,title,mergeCommit,mergedAt \
+            --jq 'sort_by(.mergedAt) | last | if . == null then "" else [.number, .title, .mergeCommit.oid] | @tsv end')
 
-          if [[ -z "$release_sha" ]]; then
+          if [[ -z "$release_pr" ]]; then
             echo "No merged release pull request is waiting for publication."
             echo "release_pending=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          version=$(jq -r '."."' .release-please-manifest.json)
+          IFS=$'\t' read -r release_pr_number release_pr_title release_sha <<< "$release_pr"
+          version=$(sed -nE 's/^chore: :bookmark: release ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' <<< "$release_pr_title")
+          if [[ -z "$version" ]]; then
+            echo "Merged release PR #${release_pr_number} has an unexpected title: ${release_pr_title}"
+            echo "release_pending=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           tag="v${version}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "release_sha=${release_sha}" >> "$GITHUB_OUTPUT"
+          echo "release_pr_number=${release_pr_number}" >> "$GITHUB_OUTPUT"
 
           if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
             if gh release view "${tag}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -156,3 +198,8 @@ jobs:
               --title "$tag" \
               --notes ""
           fi
+
+          gh pr edit "${{ steps.tag.outputs.release_pr_number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --remove-label "autorelease: pending" \
+            --add-label "autorelease: tagged"
