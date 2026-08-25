@@ -1,0 +1,143 @@
+# Getting Started
+
+This guide takes a new contributor from a clean checkout to a validated local
+build of Payment Sandbox.
+
+## Prerequisites
+
+Install the following tools:
+
+- Go `1.25.7` or a compatible Go `1.25` release, as declared in `go.mod`;
+- GNU Make;
+- Git;
+- `golangci-lint`, required by `make fmt` and `make check`.
+
+Check the Go version before starting:
+
+```bash
+go version
+```
+
+## Get the repository
+
+Clone the repository and enter its directory:
+
+```bash
+git clone https://github.com/proxynth/payment-sandbox.git
+cd payment-sandbox
+```
+
+## Configure the local environment
+
+Copy the tracked example configuration:
+
+```bash
+cp .env.example .env
+```
+
+The application reads configuration from exported environment variables. It
+does not load `.env` automatically, so load it into the current shell when
+using the example file:
+
+```bash
+set -a
+source .env
+set +a
+```
+
+The available settings are:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PAYMENT_SANDBOX_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn` or `error` |
+| `PAYMENT_SANDBOX_LOG_FORMAT` | `text` | Log format: `text` or `json` |
+| `PAYMENT_SANDBOX_HTTP_ADDRESS` | `:8080` | Configured HTTP address |
+| `PAYMENT_SANDBOX_DATABASE_PATH` | `payment-sandbox.db` | SQLite database path |
+| `PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT` | `5s` | SQLite busy timeout |
+
+Keep the local `.env` file uncommitted. The repository ignores it; only
+`.env.example` is tracked.
+
+## Validate the checkout
+
+Run the repository workflow from its root:
+
+```bash
+make fmt
+make check
+make test-race
+```
+
+These commands respectively format the Go source, run the build/tests/lint
+checks, and execute the complete test suite with the race detector.
+
+`make check` also runs `go mod tidy` and verifies that it does not modify
+`go.mod` or `go.sum`.
+
+## Build and run
+
+Build the application binary:
+
+```bash
+make build
+```
+
+The binary is written to `bin/payment-sandbox`.
+
+Run the current application bootstrap:
+
+```bash
+make run
+```
+
+At the current project stage, this command loads and validates configuration,
+opens the SQLite database, applies migrations and writes a startup log. The
+bootstrap then exits; the HTTP server composition and long-running process are
+not wired into `internal/app` yet. The configured HTTP address is therefore
+ready for the later application-composition work, but it is not a live endpoint
+after `make run` returns.
+
+## Useful commands
+
+```bash
+make help       # list Make targets
+make test       # run the complete test suite
+make coverage   # generate coverage.out
+make lint       # run golangci-lint
+```
+
+## Troubleshooting
+
+### The configuration is ignored
+
+Environment files are not loaded by the Go process. Run `source .env` with
+auto-export enabled as shown above, or export the variables directly in the
+shell that starts the application.
+
+### `make check` reports modified module files
+
+Run `go mod tidy`, inspect the resulting change and confirm that dependencies
+are intentional. A clean checkout should leave `go.mod` and `go.sum` unchanged
+after `make check`.
+
+### The database is locked
+
+Stop another local Payment Sandbox process using the same database, or point
+the process at a separate file:
+
+```bash
+PAYMENT_SANDBOX_DATABASE_PATH=/tmp/payment-sandbox-local.db make run
+```
+
+### Formatting or linting fails
+
+Run `make fmt`, review the changes, then rerun `make check`. Do not skip the
+race test before opening a pull request.
+
+## Where to go next
+
+- [Architecture index](architecture/README.md)
+- [Architecture diagrams](architecture/diagrams.md)
+- [Architecture principles](architecture/principles.md)
+- [Architectural Decision Records](architecture/decisions/)
+- [Agent and contribution workflow](../AGENTS.md)

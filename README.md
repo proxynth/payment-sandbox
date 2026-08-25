@@ -64,6 +64,9 @@ Payment Sandbox can be used to test situations such as:
 
 ## Development
 
+Start with the [Getting Started guide](docs/getting-started.md) for a clean
+checkout, environment setup and the local validation workflow.
+
 Common development commands are exposed through the Makefile.
 
 ```bash
