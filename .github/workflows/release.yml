@@ -68,8 +68,14 @@ jobs:
 
           if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
             if gh release view "${tag}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "Release ${tag} already exists."
-              echo "tag_created=true" >> "$GITHUB_OUTPUT"
+              is_draft=$(gh release view "${tag}" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')
+              if [[ "$is_draft" == "true" ]]; then
+                echo "Draft release ${tag} exists; continuing publication."
+                echo "tag_created=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "Release ${tag} is already published."
+                echo "tag_created=false" >> "$GITHUB_OUTPUT"
+              fi
             else
               echo "Release tag ${tag} exists without a release; creating the release."
               gh release create "${tag}" \
@@ -82,42 +88,14 @@ jobs:
             exit 0
           fi
 
-          if gh release view "${tag}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release ${tag} exists without a Git tag; publishing it with the expected tag."
-            gh release edit "${tag}" \
-              --repo "$GITHUB_REPOSITORY" \
-              --tag "${tag}" \
-              --target "$release_sha" \
-              --draft=false
-          else
-            gh release create "${tag}" \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$release_sha" \
-              --title "${tag}" \
-              --notes ""
-          fi
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${tag}" \
+            -f "sha=${release_sha}"
 
-          echo "Created release tag ${tag} for ${release_sha}."
+          echo "Created release tag ${tag} for ${release_sha}; artifacts will be uploaded before publishing."
           echo "tag_created=true" >> "$GITHUB_OUTPUT"
-
-      - name: Ensure a draft release exists for a manually pushed tag
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          tag="${GITHUB_REF_NAME}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            exit 0
-          fi
-
-          gh release create "$tag" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "$tag" \
-            --notes "" \
-            --draft
 
       - name: Checkout tagged commit
         if: ${{ startsWith(github.ref, 'refs/tags/v') || steps.tag.outputs.tag_created == 'true' }}
@@ -164,9 +142,17 @@ jobs:
           set -euo pipefail
 
           tag="${{ steps.tag.outputs.tag || github.ref_name }}"
-          gh release upload "$tag" dist/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
-          gh release edit "$tag" \
-            --repo "$GITHUB_REPOSITORY" \
-            --draft=false
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft=false
+          else
+            gh release create "$tag" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$tag" \
+              --notes ""
+          fi
