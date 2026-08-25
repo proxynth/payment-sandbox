@@ -119,6 +119,32 @@ The production Runtime uses durable persistence. Replay uses the same job
 lifecycle with an execution-scoped repository so one replay cannot affect
 another replay.
 
+## Payment Saga orchestration
+
+The orchestrator owns workflow progression; the payment aggregate remains the
+owner of payment state transitions. A message is a durable scheduler job and
+may be delivered more than once.
+
+```mermaid
+sequenceDiagram
+    participant API as Application command
+    participant O as Saga orchestrator
+    participant DB as Saga state / job repository
+    participant S as Scheduler + worker
+    participant H as Step handler
+    participant P as Payment + provider
+
+    API->>O: Start Saga(payment, seed)
+    O->>DB: Persist running state
+    O->>DB: Persist authorize message as job
+    S->>H: Deliver message (at-least-once)
+    H->>P: Execute provider intent
+    P-->>H: succeeded / failed / pending
+    H->>O: Handle result
+    O->>DB: Persist next step or compensation
+    O->>DB: Publish next durable message
+```
+
 ## Provider plugin boundary
 
 The core expresses business intent and validates business results. Providers

@@ -13,7 +13,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const latestVersion int64 = 4
+const latestVersion int64 = 5
 
 func TestUp_AppliesMigrations(t *testing.T) {
 	db := openTestDatabase(t)
