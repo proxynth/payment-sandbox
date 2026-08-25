@@ -70,6 +70,7 @@ not implicitly select the first payment in the scenario.
 | Command | Required fields | Effect |
 | --- | --- | --- |
 | `create_payment` | payment ID, positive amount | Creates a pending payment. |
+| `start_payment_saga` | payment ID, positive amount | Starts the durable authorize/capture Saga for the payment. |
 | `authorize` | payment ID | Asks the provider to authorize it. |
 | `capture` | payment ID, positive amount | Asks the provider to capture it. |
 | `refund` | payment ID, positive amount | Asks the provider to refund it. |
@@ -77,9 +78,9 @@ not implicitly select the first payment in the scenario.
 | `advance_time` | positive duration | Advances virtual time without waiting. |
 | `execute_async` | operation ID | Runs one due asynchronous operation. |
 
-Amounts include their currency and are required only for create, capture and
-refund. `advance_time` and `execute_async` are execution controls, so they do
-not carry a payment ID.
+Amounts include their currency and are required for create, capture, refund
+and `start_payment_saga`. `advance_time` and `execute_async` are execution
+controls, so they do not carry a payment ID.
 
 The command list must respect the payment state machine. For example, a
 capture normally follows authorization, and a refund follows a captured

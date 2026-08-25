@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,12 @@ import (
 	"proxynth/payment-sandbox/internal/provider/fake"
 	"proxynth/payment-sandbox/internal/provider/stripe"
 	replaymemory "proxynth/payment-sandbox/internal/replay/adapters/memory"
+	sagasqlite "proxynth/payment-sandbox/internal/saga/adapters/sqlite"
+	sagaapplication "proxynth/payment-sandbox/internal/saga/application"
+	sagadomain "proxynth/payment-sandbox/internal/saga/domain"
+	schedulersqlite "proxynth/payment-sandbox/internal/scheduler/adapters/sqlite"
+	schedulerapplication "proxynth/payment-sandbox/internal/scheduler/application"
+	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 	webhookhttp "proxynth/payment-sandbox/internal/webhook/adapters/http"
 	webhookmemory "proxynth/payment-sandbox/internal/webhook/adapters/memory"
 )
@@ -80,7 +87,8 @@ func run(ctx context.Context, output io.Writer) error {
 }
 
 type application struct {
-	server *api.Server
+	server    *api.Server
+	scheduler *schedulerapplication.Scheduler
 }
 
 func compose(cfg config.Config, database *sql.DB) (*application, error) {
@@ -107,6 +115,37 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		if err := providers.Register(provider); err != nil {
 			return nil, fmt.Errorf("register %s provider: %w", name, err)
 		}
+	}
+	jobRepository := schedulersqlite.NewRepository(database)
+	sagaRepository := sagasqlite.NewRepository(database)
+	sagaPublisher := sagasqlite.NewPublisher(jobRepository)
+	sagaOrchestrator, err := sagaapplication.NewOrchestrator(sagaRepository, sagaPublisher, virtualClock.Now)
+	if err != nil {
+		return nil, fmt.Errorf("create saga orchestrator: %w", err)
+	}
+	provider, err := providers.Resolve("fake")
+	if err != nil {
+		return nil, fmt.Errorf("resolve runtime provider: %w", err)
+	}
+	sagaExecutor, err := sagaapplication.NewPaymentExecutor(payments, provider, virtualClock)
+	if err != nil {
+		return nil, fmt.Errorf("create saga executor: %w", err)
+	}
+	worker, err := schedulerapplication.NewWorker(jobRepository, map[schedulerdomain.JobType]schedulerapplication.JobHandler{
+		"saga.step": func(ctx context.Context, payload []byte) error {
+			var message sagadomain.Message
+			if err := json.Unmarshal(payload, &message); err != nil {
+				return err
+			}
+			return sagaOrchestrator.Handle(ctx, message, sagaExecutor)
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create scheduler worker: %w", err)
+	}
+	runtimeScheduler, err := schedulerapplication.NewScheduler(jobRepository, runtimeDispatcher{worker}, virtualClock, schedulerapplication.Config{Owner: "runtime", BatchSize: 100, LeaseDuration: time.Minute})
+	if err != nil {
+		return nil, fmt.Errorf("create scheduler: %w", err)
 	}
 
 	paymentHandler, err := paymenthttp.NewHandler(payments)
@@ -151,10 +190,24 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		}
 	}
 
-	return &application{server: server}, nil
+	return &application{server: server, scheduler: runtimeScheduler}, nil
 }
 
 func (a *application) serve(ctx context.Context) error {
+	schedulerDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		defer close(schedulerDone)
+		for {
+			select {
+			case <-ticker.C:
+				_ = a.scheduler.Tick(ctx)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 	serverErr := make(chan error, 1)
 	go func() {
 		err := a.server.ListenAndServe()
@@ -180,6 +233,13 @@ func (a *application) serve(ctx context.Context) error {
 		if err := <-serverErr; err != nil {
 			return fmt.Errorf("stop HTTP server: %w", err)
 		}
+		<-schedulerDone
 		return nil
 	}
+}
+
+type runtimeDispatcher struct{ worker *schedulerapplication.Worker }
+
+func (d runtimeDispatcher) Dispatch(ctx context.Context, job *schedulerdomain.Job) error {
+	return d.worker.Execute(ctx, job)
 }

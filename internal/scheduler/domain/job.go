@@ -58,6 +58,50 @@ func NewJob(
 	}, nil
 }
 
+// Restore reconstructs a persisted job without replaying its lifecycle.
+// Persistence adapters are responsible for validating the stored columns
+// before calling it.
+func Restore(
+	id JobID,
+	jobType JobType,
+	payload []byte,
+	scheduledAt time.Time,
+	nextAttemptAt time.Time,
+	status JobStatus,
+	leaseOwner string,
+	leaseExpiresAt time.Time,
+	attempts uint64,
+) (Job, error) {
+	if id == "" {
+		return Job{}, ErrInvalidJobID
+	}
+	if jobType == "" {
+		return Job{}, ErrInvalidJobType
+	}
+	if scheduledAt.IsZero() || nextAttemptAt.IsZero() {
+		return Job{}, ErrInvalidScheduledAt
+	}
+	switch status {
+	case JobPending, JobLeased, JobRunning, JobCompleted, JobFailed:
+	default:
+		return Job{}, ErrInvalidExecutionStatus
+	}
+	return Job{id: id, jobType: jobType, payload: cloneBytes(payload), scheduledAt: scheduledAt.UTC(), nextAttemptAt: nextAttemptAt.UTC(), status: status, leaseOwner: leaseOwner, leaseExpiresAt: leaseExpiresAt.UTC(), attempts: attempts}, nil
+}
+
+func (j *Job) RequeueExpired(at time.Time) bool {
+	if j.status != JobLeased && j.status != JobRunning {
+		return false
+	}
+	if j.leaseExpiresAt.IsZero() || j.leaseExpiresAt.After(at) {
+		return false
+	}
+	j.status = JobPending
+	j.leaseOwner = ""
+	j.leaseExpiresAt = time.Time{}
+	return true
+}
+
 func (j *Job) Lease(owner string, expiresAt time.Time) error {
 	if j.status != JobPending {
 		return invalidTransition(j.status, "lease")

@@ -11,6 +11,7 @@ type CommandType string
 
 const (
 	CommandCreatePayment CommandType = "create_payment"
+	CommandStartSaga     CommandType = "start_payment_saga"
 	CommandAuthorize     CommandType = "authorize"
 	CommandCapture       CommandType = "capture"
 	CommandRefund        CommandType = "refund"
@@ -21,7 +22,7 @@ const (
 
 func (commandType CommandType) Valid() bool {
 	switch commandType {
-	case CommandCreatePayment, CommandAuthorize, CommandCapture, CommandRefund, CommandCancel, CommandAdvanceTime, CommandExecuteAsync:
+	case CommandCreatePayment, CommandStartSaga, CommandAuthorize, CommandCapture, CommandRefund, CommandCancel, CommandAdvanceTime, CommandExecuteAsync:
 		return true
 	default:
 		return false
@@ -48,7 +49,7 @@ func (command Command) Validate() error {
 	}
 
 	switch command.Type {
-	case CommandCreatePayment, CommandCapture, CommandRefund:
+	case CommandCreatePayment, CommandStartSaga, CommandCapture, CommandRefund:
 		if command.Amount.Amount() <= 0 {
 			return ErrInvalidCommandAmount
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	businessclock "proxynth/payment-sandbox/internal/platform/clock"
 	"proxynth/payment-sandbox/internal/scheduler/domain"
 )
 
@@ -14,8 +15,10 @@ type WorkerRepository interface {
 }
 
 type Worker struct {
-	repository WorkerRepository
-	handlers   map[domain.JobType]JobHandler
+	repository  WorkerRepository
+	handlers    map[domain.JobType]JobHandler
+	retryPolicy domain.RetryPolicy
+	clock       businessclock.Clock
 }
 
 func NewWorker(
@@ -39,6 +42,19 @@ func NewWorker(
 		repository: repository,
 		handlers:   workerHandlers,
 	}, nil
+}
+
+func NewWorkerWithRetry(repository WorkerRepository, handlers map[domain.JobType]JobHandler, retryPolicy domain.RetryPolicy, businessClock businessclock.Clock) (*Worker, error) {
+	worker, err := NewWorker(repository, handlers)
+	if err != nil {
+		return nil, err
+	}
+	if retryPolicy == nil || businessClock == nil {
+		return nil, errors.New("invalid scheduler retry configuration")
+	}
+	worker.retryPolicy = retryPolicy
+	worker.clock = businessClock
+	return worker, nil
 }
 
 func (w *Worker) Execute(ctx context.Context, job *domain.Job) error {
@@ -75,5 +91,16 @@ func (w *Worker) persistFailure(ctx context.Context, job *domain.Job, executionE
 		return errors.Join(executionErr, err)
 	}
 
+	if w.retryPolicy != nil && w.clock != nil {
+		decision, err := w.retryPolicy.Decide(job.Attempts())
+		if err != nil {
+			return errors.Join(executionErr, err)
+		}
+		if decision.Retry {
+			if err := job.ScheduleRetry(w.clock.Now().Add(decision.RetryAfter)); err != nil {
+				return errors.Join(executionErr, err)
+			}
+		}
+	}
 	return errors.Join(executionErr, w.repository.Save(ctx, job))
 }
