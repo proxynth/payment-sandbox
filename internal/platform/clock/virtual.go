@@ -9,6 +9,14 @@ type Clock interface {
 	Now() time.Time
 }
 
+// SystemClock exposes wall-clock time for operational concerns such as lease
+// expiry. Business behaviour should use VirtualClock instead.
+type SystemClock struct{}
+
+func NewSystemClock() SystemClock { return SystemClock{} }
+
+func (SystemClock) Now() time.Time { return time.Now().UTC() }
+
 type VirtualClock struct {
 	mu      sync.RWMutex
 	current time.Time

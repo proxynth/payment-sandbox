@@ -62,12 +62,12 @@ func (r *Repository) FindExecutable(ctx context.Context, at time.Time, limit int
 	return jobs, rows.Err()
 }
 
-func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string, expiresAt time.Time) (*domain.Job, error) {
+func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string, expiresAt, leaseCheckAt time.Time) (*domain.Job, error) {
 	job, err := r.find(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if job.RequeueExpired(time.Now().UTC()) {
+	if job.RequeueExpired(leaseCheckAt.UTC()) {
 		if err := r.Save(ctx, job); err != nil {
 			return nil, err
 		}

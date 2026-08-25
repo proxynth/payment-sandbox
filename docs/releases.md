@@ -1,7 +1,7 @@
 # Releases
 
 Payment Sandbox uses semantic versioning for published application releases.
-Release tags use the `vMAJOR.MINOR.PATCH` form, for example `v0.1.0`.
+Release tags use the `vMAJOR.MINOR.PATCH` form, for example `v1.1.0`.
 
 ## Repository setup
 
@@ -31,7 +31,7 @@ Release creation is automated from merges to `main`:
    immutable GitHub release and uploads the application artifacts in the same
    run. A manually pushed version tag can also trigger the publication path.
 
-The first release starts at `0.1.0`, as configured in
+The current release baseline is `1.1.0`, as configured in
 `.release-please-manifest.json`. Subsequent versions are derived from
 Conventional Commit types:
 

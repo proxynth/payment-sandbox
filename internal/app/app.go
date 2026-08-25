@@ -33,8 +33,10 @@ import (
 	schedulersqlite "proxynth/payment-sandbox/internal/scheduler/adapters/sqlite"
 	schedulerapplication "proxynth/payment-sandbox/internal/scheduler/application"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
+	webhookclient "proxynth/payment-sandbox/internal/webhook/adapters/client"
 	webhookhttp "proxynth/payment-sandbox/internal/webhook/adapters/http"
 	webhookmemory "proxynth/payment-sandbox/internal/webhook/adapters/memory"
+	webhookapplication "proxynth/payment-sandbox/internal/webhook/application"
 )
 
 func Run() error {
@@ -131,6 +133,10 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create saga executor: %w", err)
 	}
+	outboundCallback, err := webhookapplication.NewOutboundCallback(webhooks, webhookclient.New())
+	if err != nil {
+		return nil, fmt.Errorf("create webhook delivery handler: %w", err)
+	}
 	worker, err := schedulerapplication.NewWorker(jobRepository, map[schedulerdomain.JobType]schedulerapplication.JobHandler{
 		"saga.step": func(ctx context.Context, payload []byte) error {
 			var message sagadomain.Message
@@ -139,11 +145,12 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 			}
 			return sagaOrchestrator.Handle(ctx, message, sagaExecutor)
 		},
+		webhookapplication.DeliveryJobType: outboundCallback.Execute,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create scheduler worker: %w", err)
 	}
-	runtimeScheduler, err := schedulerapplication.NewScheduler(jobRepository, runtimeDispatcher{worker}, virtualClock, schedulerapplication.Config{Owner: "runtime", BatchSize: 100, LeaseDuration: time.Minute})
+	runtimeScheduler, err := schedulerapplication.NewScheduler(jobRepository, runtimeDispatcher{worker}, virtualClock, clock.NewSystemClock(), schedulerapplication.Config{Owner: "runtime", BatchSize: 100, LeaseDuration: time.Minute})
 	if err != nil {
 		return nil, fmt.Errorf("create scheduler: %w", err)
 	}

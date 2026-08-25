@@ -238,7 +238,7 @@ the scenario data and carry returned operation IDs into later commands.
 
 - [ADR-0005: Persist Asynchronous Work](architecture/decisions/adr-0005-persist-asynchronous-work.md)
 - [ADR-0006: Payment State Machine](architecture/decisions/adr-0006-payment-state-machine.md)
-- [ADR-0009: Deterministic Scenario Replay](architecture/decisions/adr-0009-deterministric-scenario-replay.md)
+- [ADR-0009: Deterministic Scenario Replay](architecture/decisions/adr-0009-deterministic-scenario-replay.md)
 - [ADR-0010: Virtual Clock](architecture/decisions/adr-0010-virtual-clock.md)
 - [ADR-0011: Provider Plugin Model](architecture/decisions/adr-0011-provider-plugin-model.md)
 

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"net/netip"
 	"net/url"
 	"strings"
 )
@@ -33,10 +34,30 @@ func (e *Endpoint) Enabled() bool { return e.enabled }
 
 func validURL(value string) bool {
 	parsed, err := url.ParseRequestURI(value)
-	if err != nil || parsed.Host == "" {
+	if err != nil || parsed.Host == "" || parsed.User != nil {
 		return false
 	}
 
 	scheme := strings.ToLower(parsed.Scheme)
-	return scheme == "http" || scheme == "https"
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+
+	address, err := netip.ParseAddr(host)
+	if err != nil {
+		return true
+	}
+	return isPublicAddress(address)
+}
+
+func isPublicAddress(address netip.Addr) bool {
+	address = address.Unmap()
+	return address.IsValid() && !address.IsPrivate() && !address.IsLoopback() &&
+		!address.IsLinkLocalUnicast() && !address.IsLinkLocalMulticast() &&
+		!address.IsMulticast() && !address.IsUnspecified()
 }

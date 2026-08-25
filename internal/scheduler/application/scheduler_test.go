@@ -123,7 +123,7 @@ func TestNewScheduler_RejectsInvalidConfiguration(t *testing.T) {
 				tt.mutate(&config, &repository, &dispatcher, &clock)
 			}
 
-			_, err := NewScheduler(repositoryArg, dispatcherArg, clockArg, config)
+			_, err := NewScheduler(repositoryArg, dispatcherArg, clockArg, clockArg, config)
 			if !errors.Is(err, tt.want) {
 				t.Fatalf("NewScheduler() error = %v, want %v", err, tt.want)
 			}
@@ -207,7 +207,7 @@ func (r *fakeRepository) FindExecutable(_ context.Context, at time.Time, limit i
 	return r.jobs, r.findErr
 }
 
-func (r *fakeRepository) Acquire(_ context.Context, id domain.JobID, _ string, expiresAt time.Time) (*domain.Job, error) {
+func (r *fakeRepository) Acquire(_ context.Context, id domain.JobID, _ string, expiresAt, _ time.Time) (*domain.Job, error) {
 	r.acquiredIDs = append(r.acquiredIDs, id)
 	r.lastExpiry = expiresAt
 	if err := r.acquireErrs[id]; err != nil {
@@ -235,7 +235,7 @@ func newTestScheduler(t *testing.T, repository Repository, dispatcher Dispatcher
 func newTestSchedulerWithClock(t *testing.T, repository Repository, dispatcher Dispatcher, clock businessclock.Clock) *Scheduler {
 	t.Helper()
 
-	scheduler, err := NewScheduler(repository, dispatcher, clock, Config{
+	scheduler, err := NewScheduler(repository, dispatcher, clock, clock, Config{
 		Owner:         "scheduler-1",
 		BatchSize:     2,
 		LeaseDuration: time.Minute,
