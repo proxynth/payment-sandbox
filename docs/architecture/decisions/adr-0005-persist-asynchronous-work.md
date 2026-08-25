@@ -1227,8 +1227,10 @@ These properties are fundamental to building a payment simulator whose behaviour
 
 ## Replay clarification
 
-Provider-owned asynchronous work is persisted as a generic operation, but its
-continuation is executed by the provider that created it. The scheduler does
-not interpret provider payloads or payment transitions. During deterministic
-replay, virtual time decides when an operation becomes due; the provider then
-returns a business outcome that is applied through the payment state machine.
+Provider-owned asynchronous work is persisted as a generic operation and
+dispatched by the scheduler to a worker. The worker invokes the provider that
+created the operation; the scheduler does not interpret provider payloads or
+payment transitions. During deterministic replay, virtual time decides when
+an operation becomes due, and the same scheduler/worker lifecycle is used.
+The provider returns a business outcome that is applied through the payment
+state machine.

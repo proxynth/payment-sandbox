@@ -121,7 +121,7 @@ type OperationResult struct {
 // deterministic scenario. The configuration remains opaque to the replay
 // core; only the provider interprets it.
 type ConfigurableProvider interface {
-	Configure(string) (Provider, error)
+	Configure(string, uint64) (Provider, error)
 }
 
 // AsyncExecutor resumes provider-owned asynchronous work once the runtime has

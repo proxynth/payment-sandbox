@@ -1046,6 +1046,7 @@ Provider configuration is carried as opaque scenario input and interpreted by
 the selected provider implementation. The replay core selects and invokes a
 provider but never branches on provider identity or profile. Providers may
 return succeeded, failed or pending outcomes. When a provider returns pending
-work, that same provider owns the continuation and returns the eventual
-business outcome; the payment domain remains responsible for validating the
+work, the scheduler and worker execute the generic operation, while the
+originating provider owns its interpretation and returns the eventual
+business outcome. The payment domain remains responsible for validating the
 resulting transition.
