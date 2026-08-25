@@ -16,6 +16,9 @@ The repository structure follows these boundaries as the project evolves, but pa
 
 ## Context Overview
 
+The rendered canonical version of the context and dependency diagram is
+available in [Architecture Diagrams](diagrams.md#contexts-and-dependency-direction).
+
 The following diagram illustrates the responsibilities of each bounded context and the flow of information between them.
 
                                         ┌──────────────────────┐
