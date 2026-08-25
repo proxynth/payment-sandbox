@@ -73,6 +73,9 @@ installing Go, start with the [user installation guide](docs/installation.md).
 Start with the [Getting Started guide](docs/getting-started.md) for a clean
 checkout, environment setup and the local validation workflow.
 
+See the [Contributing guide](CONTRIBUTING.md) for module boundaries, testing,
+commits and pull requests.
+
 Maintainers can find the release procedure in the [Releases guide](docs/releases.md).
 
 Common development commands are exposed through the Makefile.

@@ -137,4 +137,5 @@ race test before opening a pull request.
 - [Architecture diagrams](architecture/diagrams.md)
 - [Architecture principles](architecture/principles.md)
 - [Architectural Decision Records](architecture/decisions/)
+- [Contributing guide](../CONTRIBUTING.md)
 - [Agent and contribution workflow](../AGENTS.md)
