@@ -47,6 +47,7 @@ Its architecture is documented through a series of Architecture Decision Records
 See [docs/architecture](docs/architecture).
 
 The provider model is described in the [provider guide](docs/providers.md).
+The replay workflow is described in the [scenario guide](docs/scenarios.md).
 
 ## Example use cases
 
@@ -238,42 +239,9 @@ External concerns such as persistence, clocks, random generation and outbound HT
 
 ## Scenario model
 
-Scenarios will describe independently:
-
-* what happens in the payment domain;
-* what the API client observes;
-* what asynchronous events are generated;
-* how and when webhooks are delivered;
-* whether temporary inconsistencies are exposed.
-
-A scenario may eventually look like this:
-
-```yaml
-version: "1"
-
-seed: 42817
-
-rules:
-  - name: payment-created-but-response-lost
-    
-    match:
-      operation: payment.create
-      attempt: 1
-  
-    effects:
-      domain:
-        result: authorized
-  
-      response:
-        fault: connection_reset
-  
-      webhooks:
-        - event: payment.authorized
-          delay: 5s
-          duplicate: 1
-```
-
-The scenario format is not stable yet.
+The current deterministic scenario and replay model is documented in the
+[scenario guide](docs/scenarios.md). The scenario format is not yet a stable,
+versioned standalone file format.
 
 ## Schema
 
