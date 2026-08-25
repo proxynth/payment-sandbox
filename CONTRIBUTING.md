@@ -153,7 +153,7 @@ coordination.
 - [Installation](docs/installation.md): published binary installation;
 - [Scenario Guide](docs/scenarios.md): deterministic replay workflows;
 - [Provider Guide](docs/providers.md): provider contracts and extension;
-- [Release Guide](docs/releases.md): tagged release procedure;
+- [Release Guide](docs/releases.md): automated release procedure;
 - [Architecture index](docs/architecture/README.md): principles, modules and ADRs;
 - [`AGENTS.md`](AGENTS.md): instructions for the repository agent workflow.
 

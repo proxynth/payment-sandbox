@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "package-name": "payment-sandbox",
+      "changelog-path": "CHANGELOG.md"
+    }
+  },
+  "include-v-in-tag": true,
+  "pull-request-title-pattern": "chore: :bookmark: release ${version}"
+}
