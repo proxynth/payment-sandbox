@@ -136,15 +136,21 @@ jobs:
           set -euo pipefail
 
           tag="${{ steps.tag.outputs.tag || github.ref_name }}"
+          mapfile -d '' assets < <(find dist -maxdepth 1 -type f -print0)
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "No release artifacts found in dist."
+            exit 1
+          fi
+
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* \
+            gh release upload "$tag" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
             gh release edit "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --draft=false
           else
-            gh release create "$tag" dist/* \
+            gh release create "$tag" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --target "${{ steps.tag.outputs.release_sha }}" \
               --title "$tag" \
