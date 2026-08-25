@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/proxynth/payment-sandbox/compare/v1.1.0...v1.2.0) (2026-08-25)
+
+
+### Features
+
+* :shield: harden publication readiness ([#88](https://github.com/proxynth/payment-sandbox/issues/88)) ([af52733](https://github.com/proxynth/payment-sandbox/commit/af527335ac602521ea6e55a6335e1e2b3f8d84cf))
+
 ## [1.1.0](https://github.com/proxynth/payment-sandbox/compare/v1.0.0...v1.1.0) (2026-08-25)
 
 
