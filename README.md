@@ -64,6 +64,9 @@ Payment Sandbox can be used to test situations such as:
 
 ## Development
 
+To install and run a published release without cloning the repository or
+installing Go, start with the [user installation guide](docs/installation.md).
+
 Start with the [Getting Started guide](docs/getting-started.md) for a clean
 checkout, environment setup and the local validation workflow.
 
