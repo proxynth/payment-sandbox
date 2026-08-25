@@ -88,11 +88,10 @@ jobs:
             exit 0
           fi
 
-          gh api \
-            --method POST \
-            "repos/${GITHUB_REPOSITORY}/git/refs" \
-            -f "ref=refs/tags/${tag}" \
-            -f "sha=${release_sha}"
+          gh auth setup-git
+          git fetch origin "$release_sha"
+          git tag "$tag" "$release_sha"
+          git push origin "refs/tags/${tag}"
 
           echo "Created release tag ${tag} for ${release_sha}; artifacts will be uploaded before publishing."
           echo "tag_created=true" >> "$GITHUB_OUTPUT"
