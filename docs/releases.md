@@ -25,8 +25,9 @@ Release creation is automated from merges to `main`:
    Conventional Commits are present.
 2. Review and merge that release pull request when the version and generated
    notes are correct.
-3. Release Please creates the version tag, without creating a GitHub release.
-4. The same workflow validates the tagged commit and GoReleaser creates the
+3. The workflow creates the version tag automatically, without creating a
+   GitHub release through Release Please.
+4. The tag event validates the tagged commit and GoReleaser creates the
    immutable GitHub release and uploads the application artifacts.
 
 The first release starts at `0.1.0`, as configured in
@@ -54,9 +55,10 @@ A failed validation should first be retried from its existing GitHub Actions
 run using **Re-run failed jobs** or **Re-run all jobs** after fixing an
 infrastructure issue. Keep the same release pull request, tag and commit.
 
-GoReleaser is the only component that creates the GitHub release. This avoids
-attempting to update an immutable release after Release Please has created it.
-If GoReleaser has already created a release for a tag, do not rerun publication
+The workflow creates tags only for merged Release Please release PRs. GoReleaser
+is the only component that creates the GitHub release. This avoids attempting
+to update an immutable release after Release Please has created it. If
+GoReleaser has already created a release for a tag, do not rerun publication
 against that tag; publish a new corrective version instead.
 
 If the release pull request contains an incorrect version or changelog, fix
