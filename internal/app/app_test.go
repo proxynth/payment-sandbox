@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
-	"time"
 
 	"proxynth/payment-sandbox/internal/platform/config"
 	"proxynth/payment-sandbox/internal/platform/persistence/sqlite"
@@ -24,16 +24,14 @@ func TestRun_StartWithValidConfiguration(t *testing.T) {
 	t.Setenv("PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT", "5s")
 	t.Setenv("PAYMENT_SANDBOX_HTTP_ADDRESS", "127.0.0.1:0")
 
-	var output bytes.Buffer
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	output := &cancelOnStartupWriter{cancel: cancel}
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- run(ctx, &output)
+		errCh <- run(ctx, output)
 	}()
 
-	time.Sleep(50 * time.Millisecond)
-	cancel()
 	err := <-errCh
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
@@ -45,6 +43,24 @@ func TestRun_StartWithValidConfiguration(t *testing.T) {
 			output.String(),
 		)
 	}
+}
+
+type cancelOnStartupWriter struct {
+	buffer bytes.Buffer
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (w *cancelOnStartupWriter) Write(p []byte) (int, error) {
+	n, err := w.buffer.Write(p)
+	if bytes.Contains(w.buffer.Bytes(), []byte("payment sandbox starting")) {
+		w.once.Do(w.cancel)
+	}
+	return n, err
+}
+
+func (w *cancelOnStartupWriter) String() string {
+	return w.buffer.String()
 }
 
 func TestCompose_RegistersHealthAndApplicationRoutes(t *testing.T) {

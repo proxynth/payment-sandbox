@@ -46,6 +46,8 @@ Its architecture is documented through a series of Architecture Decision Records
 
 See [docs/architecture](docs/architecture).
 
+The provider model is described in the [provider guide](docs/providers.md).
+
 ## Example use cases
 
 Payment Sandbox can be used to test situations such as:
