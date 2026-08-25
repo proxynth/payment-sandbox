@@ -25,9 +25,9 @@ Release creation is automated from merges to `main`:
    Conventional Commits are present.
 2. Review and merge that release pull request when the version and generated
    notes are correct.
-3. Release Please creates the version tag and GitHub release.
-4. The same workflow validates the tagged commit and GoReleaser uploads the
-   application artifacts.
+3. Release Please creates the version tag, without creating a GitHub release.
+4. The same workflow validates the tagged commit and GoReleaser creates the
+   immutable GitHub release and uploads the application artifacts.
 
 The first release starts at `0.1.0`, as configured in
 `.release-please-manifest.json`. Subsequent versions are derived from
@@ -50,9 +50,14 @@ or push version tags manually as part of the normal workflow.
 
 ## Retry a failed release
 
-A failed release should first be retried from its existing GitHub Actions run
-using **Re-run failed jobs** or **Re-run all jobs** after fixing an
+A failed validation should first be retried from its existing GitHub Actions
+run using **Re-run failed jobs** or **Re-run all jobs** after fixing an
 infrastructure issue. Keep the same release pull request, tag and commit.
+
+GoReleaser is the only component that creates the GitHub release. This avoids
+attempting to update an immutable release after Release Please has created it.
+If GoReleaser has already created a release for a tag, do not rerun publication
+against that tag; publish a new corrective version instead.
 
 If the release pull request contains an incorrect version or changelog, fix
 the underlying Conventional Commit history or configuration, then let Release
@@ -60,13 +65,10 @@ Please update the existing release pull request. Do not create a second tag
 for the same version or move an existing tag to another commit.
 
 The release configuration keeps existing release notes and replaces an asset
-when a retry encounters an already-uploaded artifact. This makes a retry
-idempotent for the original tagged commit while preserving a single release
-for the version.
-
-If the failure is caused by the source itself after a release has been
-published, create a corrective commit on `main` and publish the next patch
-version instead of reusing the tag.
+when a retry encounters an already-uploaded artifact. This only applies before
+the GitHub release becomes immutable. If the failure is caused by the source
+itself after a release has been published, create a corrective commit on
+`main` and publish the next patch version instead of reusing the tag.
 
 The release workflow can also be started manually with **Run workflow**. This
 is a recovery or diagnostic mechanism; it does not replace merging the
