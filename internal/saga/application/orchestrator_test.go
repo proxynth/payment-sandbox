@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	"proxynth/payment-sandbox/internal/saga/domain"
 )
 
@@ -25,20 +26,26 @@ func TestOrchestratorPublishesStepsAndCompensatesAfterFailure(t *testing.T) {
 		t.Fatalf("messages = %+v", publisher.messages)
 	}
 
-	if err := orchestrator.Handle(ctx, publisher.messages[0], executorFunc(func(context.Context, domain.Message) (Outcome, error) { return OutcomeSucceeded, nil })); err != nil {
+	if err := orchestrator.Handle(ctx, publisher.messages[0], executorFunc(func(context.Context, domain.Message) (Execution, error) {
+		return Execution{Outcome: OutcomeSucceeded}, nil
+	})); err != nil {
 		t.Fatal(err)
 	}
 	if publisher.messages[1].Step != domain.StepCapture {
 		t.Fatalf("next step = %s", publisher.messages[1].Step)
 	}
 
-	if err := orchestrator.Handle(ctx, publisher.messages[1], executorFunc(func(context.Context, domain.Message) (Outcome, error) { return OutcomeFailed, nil })); err != nil {
+	if err := orchestrator.Handle(ctx, publisher.messages[1], executorFunc(func(context.Context, domain.Message) (Execution, error) {
+		return Execution{Outcome: OutcomeFailed}, nil
+	})); err != nil {
 		t.Fatal(err)
 	}
 	if publisher.messages[2].Step != domain.StepCancel {
 		t.Fatalf("compensation = %s", publisher.messages[2].Step)
 	}
-	if err := orchestrator.Handle(ctx, publisher.messages[2], executorFunc(func(context.Context, domain.Message) (Outcome, error) { return OutcomeSucceeded, nil })); err != nil {
+	if err := orchestrator.Handle(ctx, publisher.messages[2], executorFunc(func(context.Context, domain.Message) (Execution, error) {
+		return Execution{Outcome: OutcomeSucceeded}, nil
+	})); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,6 +55,29 @@ func TestOrchestratorPublishesStepsAndCompensatesAfterFailure(t *testing.T) {
 	}
 	if instance.Status != domain.StatusFailed {
 		t.Fatalf("status = %s", instance.Status)
+	}
+}
+
+func TestOrchestratorPersistsPendingProviderWorkAsMessage(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryStore()
+	publisher := &memoryPublisher{}
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	orchestrator, err := NewOrchestrator(store, publisher, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orchestrator.Start(ctx, "saga-pending", "payment-pending", 42); err != nil {
+		t.Fatal(err)
+	}
+	operation := providerdomain.AsyncOperation{ID: "provider-op-1", PaymentID: "payment-pending", Type: "authorize", ScheduledAt: now.Add(time.Minute)}
+	if err := orchestrator.Handle(ctx, publisher.messages[0], executorFunc(func(context.Context, domain.Message) (Execution, error) {
+		return Execution{Outcome: OutcomePending, AsyncOperations: []providerdomain.AsyncOperation{operation}}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.messages) != 2 || publisher.messages[1].OperationID != operation.ID || !publisher.messages[1].ScheduledAt.Equal(operation.ScheduledAt) {
+		t.Fatalf("pending messages = %+v", publisher.messages)
 	}
 }
 
@@ -64,7 +94,10 @@ func TestOrchestratorIgnoresDuplicateDelivery(t *testing.T) {
 	}
 	message := publisher.messages[0]
 	calls := 0
-	executor := executorFunc(func(context.Context, domain.Message) (Outcome, error) { calls++; return OutcomeSucceeded, nil })
+	executor := executorFunc(func(context.Context, domain.Message) (Execution, error) {
+		calls++
+		return Execution{Outcome: OutcomeSucceeded}, nil
+	})
 	if err := orchestrator.Handle(ctx, message, executor); err != nil {
 		t.Fatal(err)
 	}
@@ -76,9 +109,9 @@ func TestOrchestratorIgnoresDuplicateDelivery(t *testing.T) {
 	}
 }
 
-type executorFunc func(context.Context, domain.Message) (Outcome, error)
+type executorFunc func(context.Context, domain.Message) (Execution, error)
 
-func (f executorFunc) Execute(ctx context.Context, m domain.Message) (Outcome, error) {
+func (f executorFunc) Execute(ctx context.Context, m domain.Message) (Execution, error) {
 	return f(ctx, m)
 }
 

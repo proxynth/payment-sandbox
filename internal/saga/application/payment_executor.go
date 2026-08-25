@@ -28,10 +28,10 @@ func NewPaymentExecutor(payments paymentapplication.Repository, provider provide
 	return &PaymentExecutor{payments: payments, provider: provider, clock: businessClock}, nil
 }
 
-func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Message) (Outcome, error) {
+func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Message) (Execution, error) {
 	payment, err := e.payments.FindByID(ctx, message.PaymentID)
 	if err != nil {
-		return "", err
+		return Execution{}, err
 	}
 
 	var input struct {
@@ -40,7 +40,7 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Messag
 	}
 	if len(message.Payload) > 0 {
 		if err := json.Unmarshal(message.Payload, &input); err != nil {
-			return "", err
+			return Execution{}, err
 		}
 	}
 
@@ -48,42 +48,54 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Messag
 		ID: payment.ID(), Amount: payment.Amount(), Status: payment.Status(), Version: payment.Version(),
 	}
 	var result providerdomain.OperationResult
-	switch message.Step {
-	case sagadoamin.StepAuthorize:
-		result, err = e.provider.Authorize(ctx, providerdomain.AuthorizeRequest{Payment: snapshot, At: e.clock.Now()})
-	case sagadoamin.StepCapture:
-		amount, moneyErr := paymentdomain.NewMoney(input.Amount, input.Currency)
-		if moneyErr != nil {
-			return "", moneyErr
+	if message.OperationID != "" {
+		asyncProvider, ok := e.provider.(providerdomain.AsyncExecutor)
+		if !ok {
+			return Execution{}, fmt.Errorf("provider does not support async execution")
 		}
-		result, err = e.provider.Capture(ctx, providerdomain.CaptureRequest{Payment: snapshot, Amount: amount, At: e.clock.Now()})
-	case sagadoamin.StepRefund:
-		amount, moneyErr := paymentdomain.NewMoney(input.Amount, input.Currency)
-		if moneyErr != nil {
-			return "", moneyErr
+		var operation providerdomain.AsyncOperation
+		if err := json.Unmarshal(message.Payload, &operation); err != nil {
+			return Execution{}, err
 		}
-		result, err = e.provider.Refund(ctx, providerdomain.RefundRequest{Payment: snapshot, Amount: amount, At: e.clock.Now()})
-	case sagadoamin.StepCancel:
-		result, err = e.provider.Cancel(ctx, providerdomain.CancelRequest{Payment: snapshot, At: e.clock.Now()})
-	default:
-		return "", sagadoamin.ErrInvalidStep
+		result, err = asyncProvider.ExecuteAsync(ctx, operation)
+	} else {
+		switch message.Step {
+		case sagadoamin.StepAuthorize:
+			result, err = e.provider.Authorize(ctx, providerdomain.AuthorizeRequest{Payment: snapshot, At: e.clock.Now()})
+		case sagadoamin.StepCapture:
+			amount, moneyErr := paymentdomain.NewMoney(input.Amount, input.Currency)
+			if moneyErr != nil {
+				return Execution{}, moneyErr
+			}
+			result, err = e.provider.Capture(ctx, providerdomain.CaptureRequest{Payment: snapshot, Amount: amount, At: e.clock.Now()})
+		case sagadoamin.StepRefund:
+			amount, moneyErr := paymentdomain.NewMoney(input.Amount, input.Currency)
+			if moneyErr != nil {
+				return Execution{}, moneyErr
+			}
+			result, err = e.provider.Refund(ctx, providerdomain.RefundRequest{Payment: snapshot, Amount: amount, At: e.clock.Now()})
+		case sagadoamin.StepCancel:
+			result, err = e.provider.Cancel(ctx, providerdomain.CancelRequest{Payment: snapshot, At: e.clock.Now()})
+		default:
+			return Execution{}, sagadoamin.ErrInvalidStep
+		}
 	}
 	if err != nil {
-		return "", err
+		return Execution{}, err
 	}
 	if err := result.Validate(); err != nil {
-		return "", err
+		return Execution{}, err
 	}
 	if result.Outcome == providerdomain.OutcomePending {
-		return OutcomePending, nil
+		return Execution{Outcome: OutcomePending, AsyncOperations: result.AsyncOperations}, nil
 	}
 	if result.Outcome == providerdomain.OutcomeFailed {
 		if message.Step == sagadoamin.StepAuthorize {
 			if _, err := paymentapplication.NewFailPayment(e.payments).Execute(ctx, paymentapplication.FailPaymentCommand{PaymentID: message.PaymentID}); err != nil {
-				return "", err
+				return Execution{}, err
 			}
 		}
-		return OutcomeFailed, nil
+		return Execution{Outcome: OutcomeFailed}, nil
 	}
 
 	switch message.Step {
@@ -97,7 +109,7 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Messag
 		_, err = paymentapplication.NewCancelPayment(e.payments).Execute(ctx, paymentapplication.CancelPaymentCommand{PaymentID: message.PaymentID})
 	}
 	if err != nil {
-		return "", err
+		return Execution{}, err
 	}
-	return OutcomeSucceeded, nil
+	return Execution{Outcome: OutcomeSucceeded}, nil
 }

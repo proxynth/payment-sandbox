@@ -40,6 +40,7 @@ type Message struct {
 	SagaID      ID
 	PaymentID   paymentdomain.ID
 	Step        Step
+	OperationID string
 	Payload     []byte
 	Seed        uint64
 	ScheduledAt time.Time

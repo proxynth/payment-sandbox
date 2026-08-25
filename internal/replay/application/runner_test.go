@@ -60,6 +60,22 @@ func TestRunner_ExecutesCommandsInOrder(t *testing.T) {
 	}
 }
 
+func TestRunner_ExecutesPaymentSagaThroughSchedulerWorker(t *testing.T) {
+	amount := testMoney(t, 10000, "EUR")
+	scenario := validScenario(nil, []replaydomain.Command{
+		{Type: replaydomain.CommandCreatePayment, PaymentID: "payment-saga", Amount: amount},
+		{Type: replaydomain.CommandStartSaga, PaymentID: "payment-saga", Amount: amount},
+	})
+
+	result, err := testRunner(t).Run(context.Background(), scenario)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(result.Payments) != 1 || result.Payments[0].Status != paymentdomain.StatusCaptured {
+		t.Fatalf("payments = %+v, want captured payment", result.Payments)
+	}
+}
+
 func TestRunner_RestoresInitialState(t *testing.T) {
 	initial := paymentdomain.PaymentState{
 		ID:               "payment-1",

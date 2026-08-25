@@ -2,10 +2,12 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	"proxynth/payment-sandbox/internal/saga/domain"
 )
 
@@ -19,7 +21,12 @@ type Publisher interface {
 }
 
 type Executor interface {
-	Execute(context.Context, domain.Message) (Outcome, error)
+	Execute(context.Context, domain.Message) (Execution, error)
+}
+
+type Execution struct {
+	Outcome         Outcome
+	AsyncOperations []providerdomain.AsyncOperation
 }
 
 type Outcome string
@@ -79,25 +86,34 @@ func (o *Orchestrator) Handle(ctx context.Context, message domain.Message, execu
 	if instance.CurrentStep != message.Step {
 		return nil
 	}
-	outcome, err := executor.Execute(ctx, message)
+	execution, err := executor.Execute(ctx, message)
 	if err != nil {
 		return err
 	}
-	if !outcome.Valid() {
+	if !execution.Outcome.Valid() {
 		return errors.New("invalid saga execution outcome")
 	}
-	if outcome == OutcomePending {
+	if execution.Outcome == OutcomePending {
+		for _, operation := range execution.AsyncOperations {
+			payload, err := json.Marshal(operation)
+			if err != nil {
+				return err
+			}
+			if err := o.publisher.Publish(ctx, domain.Message{ID: operation.ID, SagaID: message.SagaID, PaymentID: message.PaymentID, Step: message.Step, OperationID: operation.ID, Payload: payload, Seed: message.Seed, ScheduledAt: operation.ScheduledAt, VirtualAt: operation.ScheduledAt, Attempt: 1}); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	at := o.clock().UTC()
 	if instance.Status == domain.StatusCompensating {
-		if outcome != OutcomeSucceeded {
+		if execution.Outcome != OutcomeSucceeded {
 			return errors.New("compensation failed")
 		}
 		if err := instance.ApplyCompensationSuccess(message.Step, at); err != nil {
 			return err
 		}
-	} else if outcome == OutcomeSucceeded {
+	} else if execution.Outcome == OutcomeSucceeded {
 		if err := instance.ApplySuccess(message.Step, at); err != nil {
 			return err
 		}
