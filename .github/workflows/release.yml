@@ -2,46 +2,64 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Publish release
+    name: Propose and publish release
     runs-on: ubuntu-latest
 
     steps:
+      - name: Create or update release pull request
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
       - name: Checkout tagged commit
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         uses: actions/checkout@v6
         with:
+          ref: ${{ steps.release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Set up Go
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Install golangci-lint
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           install-only: true
 
-      - name: Validate formatting and module files
+      - name: Validate release commit
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         run: make check
 
       - name: Run race-enabled tests
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         run: make test-race
 
-      - name: Build and publish release
+      - name: Build and publish release artifacts
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
