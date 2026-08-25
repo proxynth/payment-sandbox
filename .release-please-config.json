@@ -9,6 +9,5 @@
   },
   "include-component-in-tag": false,
   "include-v-in-tag": true,
-  "skip-github-release": true,
   "pull-request-title-pattern": "chore: :bookmark: release ${version}"
 }
