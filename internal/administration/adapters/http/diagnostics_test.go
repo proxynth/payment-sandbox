@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,7 +34,7 @@ func TestDiagnosticsHandler_ReturnsStructuredSnapshot(t *testing.T) {
 	server := diagnosticsServer(t, handler)
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/diagnostics/payments/payment-diagnostics", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/diagnostics/payments/payment-diagnostics"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -58,7 +57,7 @@ func TestDiagnosticsHandler_RejectsMalformedPath(t *testing.T) {
 	server := diagnosticsServer(t, handler)
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/diagnostics/payments/payment-diagnostics/extra", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/diagnostics/payments/payment-diagnostics/extra"))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
@@ -70,7 +69,7 @@ func diagnosticsServer(t *testing.T, handler *DiagnosticsHandler) *api.Server {
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
-	if err := handler.Register(server); err != nil {
+	if err := handler.Register(server, "test-admin-token"); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 	return server

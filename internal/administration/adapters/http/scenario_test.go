@@ -23,7 +23,7 @@ func TestScenarioHandlerReturnsStructuredScenario(t *testing.T) {
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/scenarios/scenario-http", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/scenarios/scenario-http"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -45,7 +45,7 @@ func TestScenarioHandlerMapsMissingScenario(t *testing.T) {
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/scenarios/missing", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/scenarios/missing"))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
@@ -59,7 +59,7 @@ func TestScenarioHandlerRejectsMalformedPath(t *testing.T) {
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/scenarios/scenario-http/extra", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/scenarios/scenario-http/extra"))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
@@ -73,7 +73,7 @@ func TestScenarioHandlerMapsRepositoryError(t *testing.T) {
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/scenarios/scenario-http", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/scenarios/scenario-http"))
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
 	}
@@ -94,7 +94,7 @@ func scenarioServer(t *testing.T, handler *ScenarioHandler) *api.Server {
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
-	if err := handler.Register(server); err != nil {
+	if err := handler.Register(server, "test-admin-token"); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 	return server

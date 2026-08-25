@@ -113,6 +113,7 @@ Available variables:
 | `PAYMENT_SANDBOX_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `PAYMENT_SANDBOX_LOG_FORMAT` | `text` | `text`, `json` |
 | `PAYMENT_SANDBOX_HTTP_ADDRESS` | `:8080` | HTTP listen address |
+| `PAYMENT_SANDBOX_ADMIN_TOKEN` | none | Bearer token required for `/admin/*` routes |
 
 Example:
 
@@ -305,8 +306,9 @@ Payment Sandbox must never be exposed publicly with unrestricted webhook destina
 Webhook registration rejects local and private IP literals. Runtime outbound
 delivery resolves DNS at connection time, rejects private, loopback, link-local
 and unspecified addresses, does not use an HTTP proxy, and does not follow
-redirects. Administrative endpoints are intended for trusted local or private
-network use and are not an authentication boundary.
+redirects. Administrative endpoints require the configured
+`PAYMENT_SANDBOX_ADMIN_TOKEN` as a bearer token, but should still be kept on a
+trusted local or private network and protected by an upstream network policy.
 
 Do not use real payment credentials, cardholder data or production secrets.
 
@@ -318,7 +320,8 @@ Do not use real payment credentials, cardholder data or production secrets.
 
 ## Contributing
 
-The contribution model will be documented once the initial architecture and public contracts have stabilized.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for the
+current contribution and validation workflow.
 
 Early discussions should focus on:
 
@@ -331,4 +334,5 @@ Early discussions should focus on:
 
 ## License
 
-The project license has not yet been selected.
+Payment Sandbox is licensed under the MIT License. See [LICENSE](LICENSE) for
+the complete license text.

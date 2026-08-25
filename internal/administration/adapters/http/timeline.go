@@ -31,8 +31,8 @@ func NewTimelineHandler(
 	return &TimelineHandler{timeline: timeline}, nil
 }
 
-func (h *TimelineHandler) Register(server *api.Server) error {
-	return server.HandlePrefix(http.MethodGet, paymentTimelinePathPrefix, http.HandlerFunc(h.getTimeline))
+func (h *TimelineHandler) Register(server *api.Server, token string) error {
+	return server.HandleAdminPrefix(http.MethodGet, paymentTimelinePathPrefix, http.HandlerFunc(h.getTimeline), token)
 }
 
 type timelineResponse struct {

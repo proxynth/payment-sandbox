@@ -36,8 +36,8 @@ func NewDiagnosticsHandler(
 	return &DiagnosticsHandler{diagnostics: diagnostics}, nil
 }
 
-func (h *DiagnosticsHandler) Register(server *api.Server) error {
-	return server.HandlePrefix(http.MethodGet, diagnosticsPaymentPathPrefix, http.HandlerFunc(h.getDiagnostics))
+func (h *DiagnosticsHandler) Register(server *api.Server, token string) error {
+	return server.HandleAdminPrefix(http.MethodGet, diagnosticsPaymentPathPrefix, http.HandlerFunc(h.getDiagnostics), token)
 }
 
 type diagnosticsResponse struct {

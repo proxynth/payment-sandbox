@@ -13,6 +13,12 @@ type EventLog interface {
 	ListByAggregate(context.Context, domain.ID) ([]domain.BusinessEvent, error)
 }
 
+// EventPublisher receives completed payment transitions and may project them
+// into the event log and durable asynchronous work.
+type EventPublisher interface {
+	Publish(context.Context, *domain.Payment, domain.EventType) error
+}
+
 type eventLogError struct{ message string }
 
 func (e *eventLogError) Error() string { return e.message }

@@ -94,11 +94,16 @@ The available variables are:
 | `PAYMENT_SANDBOX_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn` or `error` |
 | `PAYMENT_SANDBOX_LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `PAYMENT_SANDBOX_HTTP_ADDRESS` | `:8080` | HTTP listen address |
+| `PAYMENT_SANDBOX_ADMIN_TOKEN` | none | Required bearer token for `/admin/*` routes; use a long random value |
 | `PAYMENT_SANDBOX_DATABASE_PATH` | `payment-sandbox.db` | SQLite database path |
 | `PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT` | `5s` | SQLite busy timeout |
 
 The application does not load `.env` automatically. Export the variables as
 shown above, or set them directly in the shell that starts the binary.
+
+The admin token has no default. Replace the placeholder in `.env` with a
+unique high-entropy secret. Send it as `Authorization: Bearer <token>` when
+calling administrative or diagnostic routes.
 
 ## Start and check readiness
 

@@ -12,12 +12,17 @@ type AuthorizePaymentCommand struct {
 
 type AuthorizePayment struct {
 	repository Repository
+	publisher  EventPublisher
 }
 
 func NewAuthorizePayment(repository Repository) *AuthorizePayment {
 	return &AuthorizePayment{
 		repository: repository,
 	}
+}
+
+func NewAuthorizePaymentWithPublisher(repository Repository, publisher EventPublisher) *AuthorizePayment {
+	return &AuthorizePayment{repository: repository, publisher: publisher}
 }
 
 func (c *AuthorizePayment) Execute(
@@ -38,6 +43,11 @@ func (c *AuthorizePayment) Execute(
 
 	if err := c.repository.Save(ctx, payment); err != nil {
 		return nil, err
+	}
+	if c.publisher != nil {
+		if err := c.publisher.Publish(ctx, payment, domain.EventPaymentAuthorized); err != nil {
+			return nil, err
+		}
 	}
 
 	return payment, nil

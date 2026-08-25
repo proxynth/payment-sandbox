@@ -27,8 +27,8 @@ func NewScenarioHandler(repository application.ScenarioRepository) (*ScenarioHan
 	return &ScenarioHandler{inspection: inspection}, nil
 }
 
-func (h *ScenarioHandler) Register(server *api.Server) error {
-	return server.HandlePrefix(http.MethodGet, scenarioPathPrefix, http.HandlerFunc(h.getScenario))
+func (h *ScenarioHandler) Register(server *api.Server, token string) error {
+	return server.HandleAdminPrefix(http.MethodGet, scenarioPathPrefix, http.HandlerFunc(h.getScenario), token)
 }
 
 type scenarioResponse struct {

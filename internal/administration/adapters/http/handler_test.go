@@ -97,7 +97,7 @@ func newServer(t *testing.T, handler *Handler) *api.Server {
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
-	if err := handler.Register(server); err != nil {
+	if err := handler.Register(server, "test-admin-token"); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 	return server
@@ -119,7 +119,15 @@ func (failingClock) Advance(time.Duration) error { return clock.ErrBackwardAdvan
 
 func newRequest(t *testing.T, method, path, body string) *http.Request {
 	t.Helper()
-	return httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(body))
+	request := httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer test-admin-token")
+	return request
+}
+
+func adminRequest(method, path string) *http.Request {
+	request := httptest.NewRequestWithContext(context.Background(), method, path, nil)
+	request.Header.Set("Authorization", "Bearer test-admin-token")
+	return request
 }
 
 func serve(server *api.Server, request *http.Request) *httptest.ResponseRecorder {

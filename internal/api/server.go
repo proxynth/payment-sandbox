@@ -56,6 +56,14 @@ func (s *Server) HandlePrefix(method, prefix string, handler http.Handler) error
 	return s.router.HandlePrefix(method, prefix, handler)
 }
 
+func (s *Server) HandleAdmin(method, path string, handler http.Handler, token string) error {
+	return s.router.Handle(method, path, BearerToken(token)(handler))
+}
+
+func (s *Server) HandleAdminPrefix(method, prefix string, handler http.Handler, token string) error {
+	return s.router.HandlePrefix(method, prefix, BearerToken(token)(handler))
+}
+
 func (s *Server) Handler() http.Handler {
 	return s.router
 }

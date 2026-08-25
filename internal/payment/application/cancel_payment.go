@@ -12,12 +12,17 @@ type CancelPaymentCommand struct {
 
 type CancelPayment struct {
 	repository Repository
+	publisher  EventPublisher
 }
 
 func NewCancelPayment(repository Repository) *CancelPayment {
 	return &CancelPayment{
 		repository: repository,
 	}
+}
+
+func NewCancelPaymentWithPublisher(repository Repository, publisher EventPublisher) *CancelPayment {
+	return &CancelPayment{repository: repository, publisher: publisher}
 }
 
 func (c *CancelPayment) Execute(
@@ -35,6 +40,11 @@ func (c *CancelPayment) Execute(
 
 	if err := c.repository.Save(ctx, payment); err != nil {
 		return nil, err
+	}
+	if c.publisher != nil {
+		if err := c.publisher.Publish(ctx, payment, domain.EventPaymentCancelled); err != nil {
+			return nil, err
+		}
 	}
 
 	return payment, nil

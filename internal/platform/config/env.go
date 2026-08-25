@@ -14,6 +14,7 @@ const (
 	envDatabasePath        = "PAYMENT_SANDBOX_DATABASE_PATH"
 	envDatabaseBusyTimeout = "PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT"
 	envHTTPAddress         = "PAYMENT_SANDBOX_HTTP_ADDRESS"
+	envAdminToken          = "PAYMENT_SANDBOX_ADMIN_TOKEN"
 )
 
 func Load() (Config, error) {
@@ -45,6 +46,10 @@ func Load() (Config, error) {
 
 	if value := os.Getenv(envHTTPAddress); value != "" {
 		cfg.HTTP.Address = value
+	}
+
+	if value := os.Getenv(envAdminToken); value != "" {
+		cfg.Admin.Token = value
 	}
 
 	if err := validate(cfg); err != nil {
