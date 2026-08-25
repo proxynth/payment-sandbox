@@ -13,7 +13,9 @@ func TestNewEndpoint_ValidatesIdentityAndURL(t *testing.T) {
 		err  error
 	}{
 		{name: "valid https", id: "endpoint-1", url: "https://example.test/hooks"},
-		{name: "valid http", id: "endpoint-1", url: "http://localhost:8080/hooks"},
+		{name: "private host", id: "endpoint-1", url: "http://localhost:8080/hooks", err: ErrInvalidEndpointURL},
+		{name: "private address", id: "endpoint-1", url: "http://127.0.0.1:8080/hooks", err: ErrInvalidEndpointURL},
+		{name: "credentials", id: "endpoint-1", url: "https://user:secret@example.test/hooks", err: ErrInvalidEndpointURL},
 		{name: "missing id", url: "https://example.test/hooks", err: ErrInvalidEndpointID},
 		{name: "missing scheme", id: "endpoint-1", url: "example.test/hooks", err: ErrInvalidEndpointURL},
 		{name: "unsupported scheme", id: "endpoint-1", url: "ftp://example.test/hooks", err: ErrInvalidEndpointURL},

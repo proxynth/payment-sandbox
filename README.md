@@ -1,6 +1,6 @@
 # Payment Sandbox
 
-Payment Sandbox is an open-source payment systems simulator written in Go.
+Payment Sandbox is a payment systems simulator written in Go.
 
 It helps backend developers test payment integrations against realistic business workflows, asynchronous events and distributed-system failures without depending on a real payment service provider.
 
@@ -278,19 +278,14 @@ Replay / Diagnostics
 
 ## Project status
 
-Payment Sandbox is currently in its design and early implementation phase.
+Payment Sandbox is under active development. The latest published release is
+`v1.1.0`; the core payment API, durable scheduler, virtual time, deterministic
+providers, Saga orchestration and diagnostic endpoints are available for local
+and integration testing.
 
-The first milestone is a vertical slice covering:
-
-1. payment creation;
-2. persistence;
-3. event creation;
-4. webhook scheduling;
-5. webhook delivery;
-6. administrative inspection;
-7. structured logs and health endpoints.
-
-No stable API or scenario compatibility is guaranteed before the first tagged release.
+The HTTP API and scenario model may still evolve. Compatibility guarantees are
+defined by the documentation for each published release rather than by the
+major version alone.
 
 ## Non-goals
 
@@ -307,7 +302,11 @@ Payment Sandbox is not intended to:
 
 Payment Sandbox must never be exposed publicly with unrestricted webhook destinations or administrative endpoints.
 
-Security-sensitive behaviours, including outbound webhook requests and access to private network ranges, will be documented and restricted as the project evolves.
+Webhook registration rejects local and private IP literals. Runtime outbound
+delivery resolves DNS at connection time, rejects private, loopback, link-local
+and unspecified addresses, does not use an HTTP proxy, and does not follow
+redirects. Administrative endpoints are intended for trusted local or private
+network use and are not an authentication boundary.
 
 Do not use real payment credentials, cardholder data or production secrets.
 

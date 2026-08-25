@@ -100,7 +100,7 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 	if err != nil {
 		return Result{}, err
 	}
-	scheduler, err := schedulerapplication.NewScheduler(jobs, workerDispatcher{worker}, virtualClock, schedulerapplication.Config{Owner: "replay", BatchSize: 100, LeaseDuration: time.Minute})
+	scheduler, err := schedulerapplication.NewScheduler(jobs, workerDispatcher{worker}, virtualClock, virtualClock, schedulerapplication.Config{Owner: "replay", BatchSize: 100, LeaseDuration: time.Minute})
 	if err != nil {
 		return Result{}, err
 	}
@@ -446,7 +446,7 @@ func (r *scenarioJobRepository) FindExecutable(ctx context.Context, at time.Time
 	return jobs, nil
 }
 
-func (r *scenarioJobRepository) Acquire(ctx context.Context, id schedulerdomain.JobID, owner string, expiresAt time.Time) (*schedulerdomain.Job, error) {
+func (r *scenarioJobRepository) Acquire(ctx context.Context, id schedulerdomain.JobID, owner string, expiresAt, _ time.Time) (*schedulerdomain.Job, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

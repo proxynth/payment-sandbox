@@ -38,7 +38,7 @@ func TestRepositoryRoundTripsAndAcquiresJob(t *testing.T) {
 	if len(jobs) != 1 {
 		t.Fatalf("jobs = %d, want 1", len(jobs))
 	}
-	acquired, err := repository.Acquire(context.Background(), jobs[0].ID(), "worker-1", at.Add(time.Minute))
+	acquired, err := repository.Acquire(context.Background(), jobs[0].ID(), "worker-1", at.Add(time.Minute), at)
 	if err != nil {
 		t.Fatal(err)
 	}

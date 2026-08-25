@@ -11,7 +11,7 @@ import (
 
 type Repository interface {
 	FindExecutable(ctx context.Context, at time.Time, limit int) ([]*domain.Job, error)
-	Acquire(ctx context.Context, id domain.JobID, owner string, expiresAt time.Time) (*domain.Job, error)
+	Acquire(ctx context.Context, id domain.JobID, owner string, expiresAt, leaseCheckAt time.Time) (*domain.Job, error)
 }
 
 type Dispatcher interface {
@@ -25,18 +25,20 @@ type Config struct {
 }
 
 type Scheduler struct {
-	repository    Repository
-	dispatcher    Dispatcher
-	clock         businessclock.Clock
-	owner         string
-	batchSize     int
-	leaseDuration time.Duration
+	repository       Repository
+	dispatcher       Dispatcher
+	businessClock    businessclock.Clock
+	operationalClock businessclock.Clock
+	owner            string
+	batchSize        int
+	leaseDuration    time.Duration
 }
 
 func NewScheduler(
 	repository Repository,
 	dispatcher Dispatcher,
-	clock businessclock.Clock,
+	businessClock businessclock.Clock,
+	operationalClock businessclock.Clock,
 	config Config,
 ) (*Scheduler, error) {
 	if repository == nil {
@@ -47,8 +49,11 @@ func NewScheduler(
 		return nil, ErrInvalidDispatcher
 	}
 
-	if clock == nil {
+	if businessClock == nil {
 		return nil, ErrInvalidClock
+	}
+	if operationalClock == nil {
+		return nil, ErrInvalidOperationalClock
 	}
 
 	if config.Owner == "" {
@@ -64,17 +69,18 @@ func NewScheduler(
 	}
 
 	return &Scheduler{
-		repository:    repository,
-		dispatcher:    dispatcher,
-		clock:         clock,
-		owner:         config.Owner,
-		batchSize:     config.BatchSize,
-		leaseDuration: config.LeaseDuration,
+		repository:       repository,
+		dispatcher:       dispatcher,
+		businessClock:    businessClock,
+		operationalClock: operationalClock,
+		owner:            config.Owner,
+		batchSize:        config.BatchSize,
+		leaseDuration:    config.LeaseDuration,
 	}, nil
 }
 
 func (s *Scheduler) Tick(ctx context.Context) error {
-	now := s.clock.Now().UTC()
+	now := s.businessClock.Now().UTC()
 	jobs, err := s.repository.FindExecutable(ctx, now, s.batchSize)
 	if err != nil {
 		return err
@@ -88,7 +94,7 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 		}
 
 		leaseExpiresAt := now.Add(s.leaseDuration)
-		acquired, err := s.repository.Acquire(ctx, job.ID(), s.owner, leaseExpiresAt)
+		acquired, err := s.repository.Acquire(ctx, job.ID(), s.owner, leaseExpiresAt, s.operationalClock.Now().UTC())
 		if err != nil {
 			tickErrors = append(tickErrors, err)
 			continue

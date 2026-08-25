@@ -11,7 +11,7 @@ ADR-0001: Use a modular monolith
 
 Context
 
-Payment Sandbox is an open-source tool designed to simulate the behaviour of a payment service provider.
+Payment Sandbox is a tool designed to simulate the behaviour of a payment service provider.
 
 It must expose synchronous payment APIs while also modelling asynchronous and distributed-system behaviours such as:
 

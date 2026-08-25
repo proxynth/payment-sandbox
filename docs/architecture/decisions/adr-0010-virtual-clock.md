@@ -1030,6 +1030,13 @@ Schedulers determine execution eligibility by comparing scheduled execution time
 
 The scheduler does not own time.
 
+Lease recovery is an operational concern rather than business behaviour. The
+runtime therefore supplies a separate wall-clock source when checking whether
+a persisted lease has expired, while the virtual clock remains the source for
+job eligibility, retry scheduling and provider decisions. This separation
+keeps crash recovery practical without making deterministic business execution
+depend on elapsed wall-clock time.
+
 It only evaluates temporal conditions.
 
 ---
