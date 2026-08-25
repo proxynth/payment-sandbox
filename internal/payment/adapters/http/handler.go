@@ -25,17 +25,21 @@ type Handler struct {
 }
 
 func NewHandler(repository paymentapplication.Repository) (*Handler, error) {
+	return NewHandlerWithPublisher(repository, nil)
+}
+
+func NewHandlerWithPublisher(repository paymentapplication.Repository, publisher paymentapplication.EventPublisher) (*Handler, error) {
 	if repository == nil {
 		return nil, ErrNilRepository
 	}
 
 	return &Handler{
-		create:    paymentapplication.NewCreatePayment(repository),
+		create:    paymentapplication.NewCreatePaymentWithPublisher(repository, publisher),
 		get:       paymentapplication.NewGetPayment(repository),
-		authorize: paymentapplication.NewAuthorizePayment(repository),
-		capture:   paymentapplication.NewCapturePayment(repository),
-		refund:    paymentapplication.NewRefundPayment(repository),
-		cancel:    paymentapplication.NewCancelPayment(repository),
+		authorize: paymentapplication.NewAuthorizePaymentWithPublisher(repository, publisher),
+		capture:   paymentapplication.NewCapturePaymentWithPublisher(repository, publisher),
+		refund:    paymentapplication.NewRefundPaymentWithPublisher(repository, publisher),
+		cancel:    paymentapplication.NewCancelPaymentWithPublisher(repository, publisher),
 	}, nil
 }
 

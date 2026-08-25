@@ -52,11 +52,16 @@ The available settings are:
 | `PAYMENT_SANDBOX_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn` or `error` |
 | `PAYMENT_SANDBOX_LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `PAYMENT_SANDBOX_HTTP_ADDRESS` | `:8080` | Configured HTTP address |
+| `PAYMENT_SANDBOX_ADMIN_TOKEN` | none | Required bearer token for `/admin/*` routes; use a long random value |
 | `PAYMENT_SANDBOX_DATABASE_PATH` | `payment-sandbox.db` | SQLite database path |
 | `PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT` | `5s` | SQLite busy timeout |
 
 Keep the local `.env` file uncommitted. The repository ignores it; only
 `.env.example` is tracked.
+
+The admin token is intentionally not given a default. Set a unique, high
+entropy value before starting the application. Health and payment/webhook
+routes do not require this token; administrative and diagnostic routes do.
 
 ## Validate the checkout
 

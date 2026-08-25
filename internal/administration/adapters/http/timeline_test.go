@@ -42,12 +42,12 @@ func TestTimelineHandler_ReturnsPaymentTimeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
-	if err := handler.Register(server); err != nil {
+	if err := handler.Register(server, "test-admin-token"); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/payments/payment-timeline/timeline", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/payments/payment-timeline/timeline"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -71,12 +71,12 @@ func TestTimelineHandler_RejectsMalformedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
-	if err := handler.Register(server); err != nil {
+	if err := handler.Register(server, "test-admin-token"); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/payments/payment-timeline", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/payments/payment-timeline"))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
@@ -91,12 +91,12 @@ func TestTimelineHandler_MapsMissingPayment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
-	if err := handler.Register(server); err != nil {
+	if err := handler.Register(server, "test-admin-token"); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 
 	response := httptest.NewRecorder()
-	server.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/payments/payment-missing/timeline", nil))
+	server.ServeHTTP(response, adminRequest(http.MethodGet, "/admin/payments/payment-missing/timeline"))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}

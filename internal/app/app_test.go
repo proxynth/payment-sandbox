@@ -23,6 +23,7 @@ func TestRun_StartWithValidConfiguration(t *testing.T) {
 	t.Setenv("PAYMENT_SANDBOX_DATABASE_PATH", dbPath)
 	t.Setenv("PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT", "5s")
 	t.Setenv("PAYMENT_SANDBOX_HTTP_ADDRESS", "127.0.0.1:0")
+	t.Setenv("PAYMENT_SANDBOX_ADMIN_TOKEN", "test-admin-token")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -67,6 +68,7 @@ func TestCompose_RegistersHealthAndApplicationRoutes(t *testing.T) {
 	cfg := config.Default()
 	cfg.Database.Path = filepath.Join(t.TempDir(), "payment-sandbox.db")
 	cfg.HTTP.Address = "127.0.0.1:0"
+	cfg.Admin.Token = "test-admin-token"
 
 	database, err := sqlite.Open(context.Background(), cfg.Database)
 	if err != nil {
@@ -94,6 +96,7 @@ func TestCompose_RegistersHealthAndApplicationRoutes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create GET %s request error = %v", path, err)
 		}
+		request.Header.Set("Authorization", "Bearer test-admin-token")
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
 			t.Fatalf("GET %s error = %v", path, err)

@@ -15,10 +15,15 @@ type HTTPConfig struct {
 	Address string
 }
 
+type AdminConfig struct {
+	Token string
+}
+
 type Config struct {
 	Logging  logging.Config
 	Database DatabaseConfig
 	HTTP     HTTPConfig
+	Admin    AdminConfig
 }
 
 func Default() Config {

@@ -67,6 +67,9 @@ func run(ctx context.Context, output io.Writer) error {
 	if err := migrations.Up(database); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
+	if cfg.Admin.Token == "" {
+		return fmt.Errorf("admin API token is required")
+	}
 
 	application, err := compose(cfg, database)
 	if err != nil {
@@ -121,6 +124,10 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	jobRepository := schedulersqlite.NewRepository(database)
 	sagaRepository := sagasqlite.NewRepository(database)
 	sagaPublisher := sagasqlite.NewPublisher(jobRepository)
+	eventPublisher, err := newPaymentEventPublisher(events, webhooks, jobRepository, virtualClock)
+	if err != nil {
+		return nil, fmt.Errorf("create payment event publisher: %w", err)
+	}
 	sagaOrchestrator, err := sagaapplication.NewOrchestrator(sagaRepository, sagaPublisher, virtualClock.Now)
 	if err != nil {
 		return nil, fmt.Errorf("create saga orchestrator: %w", err)
@@ -129,7 +136,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve runtime provider: %w", err)
 	}
-	sagaExecutor, err := sagaapplication.NewPaymentExecutor(payments, provider, virtualClock)
+	sagaExecutor, err := sagaapplication.NewPaymentExecutorWithPublisher(payments, provider, virtualClock, eventPublisher)
 	if err != nil {
 		return nil, fmt.Errorf("create saga executor: %w", err)
 	}
@@ -155,7 +162,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		return nil, fmt.Errorf("create scheduler: %w", err)
 	}
 
-	paymentHandler, err := paymenthttp.NewHandler(payments)
+	paymentHandler, err := paymenthttp.NewHandlerWithPublisher(payments, eventPublisher)
 	if err != nil {
 		return nil, fmt.Errorf("create payment handler: %w", err)
 	}
@@ -186,10 +193,10 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	}{
 		{"payment", func() error { return paymentHandler.Register(server) }},
 		{"webhook", func() error { return webhookHandler.Register(server) }},
-		{"administration", func() error { return administrationHandler.Register(server) }},
-		{"scenario", func() error { return scenarioHandler.Register(server) }},
-		{"timeline", func() error { return timelineHandler.Register(server) }},
-		{"diagnostics", func() error { return diagnosticsHandler.Register(server) }},
+		{"administration", func() error { return administrationHandler.Register(server, cfg.Admin.Token) }},
+		{"scenario", func() error { return scenarioHandler.Register(server, cfg.Admin.Token) }},
+		{"timeline", func() error { return timelineHandler.Register(server, cfg.Admin.Token) }},
+		{"diagnostics", func() error { return diagnosticsHandler.Register(server, cfg.Admin.Token) }},
 	}
 	for _, registration := range registrations {
 		if err := registration.register(); err != nil {

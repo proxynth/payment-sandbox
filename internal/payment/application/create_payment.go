@@ -14,12 +14,17 @@ type CreatePaymentCommand struct {
 
 type CreatePayment struct {
 	repository Repository
+	publisher  EventPublisher
 }
 
 func NewCreatePayment(repository Repository) *CreatePayment {
 	return &CreatePayment{
 		repository: repository,
 	}
+}
+
+func NewCreatePaymentWithPublisher(repository Repository, publisher EventPublisher) *CreatePayment {
+	return &CreatePayment{repository: repository, publisher: publisher}
 }
 
 func (c *CreatePayment) Execute(
@@ -44,6 +49,11 @@ func (c *CreatePayment) Execute(
 
 	if err := c.repository.Save(ctx, payment); err != nil {
 		return nil, err
+	}
+	if c.publisher != nil {
+		if err := c.publisher.Publish(ctx, payment, domain.EventPaymentCreated); err != nil {
+			return nil, err
+		}
 	}
 
 	return payment, nil

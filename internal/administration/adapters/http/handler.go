@@ -48,14 +48,14 @@ func NewHandler(clockSource clockPort, registry providerRegistry) (*Handler, err
 	}, nil
 }
 
-func (h *Handler) Register(server *api.Server) error {
-	if err := server.Handle(http.MethodGet, "/admin/time", http.HandlerFunc(h.getTime)); err != nil {
+func (h *Handler) Register(server *api.Server, token string) error {
+	if err := server.HandleAdmin(http.MethodGet, "/admin/time", http.HandlerFunc(h.getTime), token); err != nil {
 		return err
 	}
-	if err := server.Handle(http.MethodPost, "/admin/time/advance", http.HandlerFunc(h.advanceTime)); err != nil {
+	if err := server.HandleAdmin(http.MethodPost, "/admin/time/advance", http.HandlerFunc(h.advanceTime), token); err != nil {
 		return err
 	}
-	return server.Handle(http.MethodGet, "/admin/providers", http.HandlerFunc(h.listProviders))
+	return server.HandleAdmin(http.MethodGet, "/admin/providers", http.HandlerFunc(h.listProviders), token)
 }
 
 type timeResponse struct {
