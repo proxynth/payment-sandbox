@@ -25,20 +25,20 @@ func TestOrchestratorPublishesStepsAndCompensatesAfterFailure(t *testing.T) {
 		t.Fatalf("messages = %+v", publisher.messages)
 	}
 
-	if err := orchestrator.Handle(ctx, publisher.messages[0], executorFunc(func(context.Context, domain.Message) (bool, error) { return true, nil })); err != nil {
+	if err := orchestrator.Handle(ctx, publisher.messages[0], executorFunc(func(context.Context, domain.Message) (Outcome, error) { return OutcomeSucceeded, nil })); err != nil {
 		t.Fatal(err)
 	}
 	if publisher.messages[1].Step != domain.StepCapture {
 		t.Fatalf("next step = %s", publisher.messages[1].Step)
 	}
 
-	if err := orchestrator.Handle(ctx, publisher.messages[1], executorFunc(func(context.Context, domain.Message) (bool, error) { return false, nil })); err != nil {
+	if err := orchestrator.Handle(ctx, publisher.messages[1], executorFunc(func(context.Context, domain.Message) (Outcome, error) { return OutcomeFailed, nil })); err != nil {
 		t.Fatal(err)
 	}
 	if publisher.messages[2].Step != domain.StepCancel {
 		t.Fatalf("compensation = %s", publisher.messages[2].Step)
 	}
-	if err := orchestrator.Handle(ctx, publisher.messages[2], executorFunc(func(context.Context, domain.Message) (bool, error) { return true, nil })); err != nil {
+	if err := orchestrator.Handle(ctx, publisher.messages[2], executorFunc(func(context.Context, domain.Message) (Outcome, error) { return OutcomeSucceeded, nil })); err != nil {
 		t.Fatal(err)
 	}
 
@@ -64,7 +64,7 @@ func TestOrchestratorIgnoresDuplicateDelivery(t *testing.T) {
 	}
 	message := publisher.messages[0]
 	calls := 0
-	executor := executorFunc(func(context.Context, domain.Message) (bool, error) { calls++; return true, nil })
+	executor := executorFunc(func(context.Context, domain.Message) (Outcome, error) { calls++; return OutcomeSucceeded, nil })
 	if err := orchestrator.Handle(ctx, message, executor); err != nil {
 		t.Fatal(err)
 	}
@@ -76,9 +76,11 @@ func TestOrchestratorIgnoresDuplicateDelivery(t *testing.T) {
 	}
 }
 
-type executorFunc func(context.Context, domain.Message) (bool, error)
+type executorFunc func(context.Context, domain.Message) (Outcome, error)
 
-func (f executorFunc) Execute(ctx context.Context, m domain.Message) (bool, error) { return f(ctx, m) }
+func (f executorFunc) Execute(ctx context.Context, m domain.Message) (Outcome, error) {
+	return f(ctx, m)
+}
 
 type memoryPublisher struct{ messages []domain.Message }
 

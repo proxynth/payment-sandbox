@@ -2,6 +2,7 @@
 CREATE TABLE saga_instances (
     id TEXT PRIMARY KEY NOT NULL,
     payment_id TEXT NOT NULL,
+    payload BLOB NOT NULL,
     status TEXT NOT NULL,
     current_step TEXT NOT NULL,
     completed_steps TEXT NOT NULL,

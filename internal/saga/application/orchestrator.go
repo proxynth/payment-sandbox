@@ -19,7 +19,19 @@ type Publisher interface {
 }
 
 type Executor interface {
-	Execute(context.Context, domain.Message) (success bool, err error)
+	Execute(context.Context, domain.Message) (Outcome, error)
+}
+
+type Outcome string
+
+const (
+	OutcomeSucceeded Outcome = "succeeded"
+	OutcomePending   Outcome = "pending"
+	OutcomeFailed    Outcome = "failed"
+)
+
+func (o Outcome) Valid() bool {
+	return o == OutcomeSucceeded || o == OutcomePending || o == OutcomeFailed
 }
 
 type Orchestrator struct {
@@ -36,8 +48,12 @@ func NewOrchestrator(store Store, publisher Publisher, now func() time.Time) (*O
 }
 
 func (o *Orchestrator) Start(ctx context.Context, id domain.ID, paymentID string, seed uint64) error {
+	return o.StartWithPayload(ctx, id, paymentID, nil, seed)
+}
+
+func (o *Orchestrator) StartWithPayload(ctx context.Context, id domain.ID, paymentID string, payload []byte, seed uint64) error {
 	at := o.clock().UTC()
-	instance, err := domain.New(id, paymentdomain.ID(paymentID), seed, at)
+	instance, err := domain.NewWithPayload(id, paymentdomain.ID(paymentID), payload, seed, at)
 	if err != nil {
 		return err
 	}
@@ -63,19 +79,25 @@ func (o *Orchestrator) Handle(ctx context.Context, message domain.Message, execu
 	if instance.CurrentStep != message.Step {
 		return nil
 	}
-	success, err := executor.Execute(ctx, message)
+	outcome, err := executor.Execute(ctx, message)
 	if err != nil {
 		return err
 	}
+	if !outcome.Valid() {
+		return errors.New("invalid saga execution outcome")
+	}
+	if outcome == OutcomePending {
+		return nil
+	}
 	at := o.clock().UTC()
 	if instance.Status == domain.StatusCompensating {
-		if !success {
+		if outcome != OutcomeSucceeded {
 			return errors.New("compensation failed")
 		}
 		if err := instance.ApplyCompensationSuccess(message.Step, at); err != nil {
 			return err
 		}
-	} else if success {
+	} else if outcome == OutcomeSucceeded {
 		if err := instance.ApplySuccess(message.Step, at); err != nil {
 			return err
 		}
@@ -97,7 +119,8 @@ func (o *Orchestrator) publishCurrent(ctx context.Context, instance domain.Insta
 	return o.publisher.Publish(ctx, domain.Message{
 		ID:     string(instance.ID) + ":" + string(instance.CurrentStep) + ":" + itoa(instance.Version),
 		SagaID: instance.ID, PaymentID: instance.PaymentID, Step: instance.CurrentStep,
-		Seed: instance.Seed, ScheduledAt: at, VirtualAt: at, Attempt: 1,
+		Payload: append([]byte(nil), instance.Payload...),
+		Seed:    instance.Seed, ScheduledAt: at, VirtualAt: at, Attempt: 1,
 	})
 }
 

@@ -75,6 +75,7 @@ func (s Status) Valid() bool {
 type Instance struct {
 	ID             ID
 	PaymentID      paymentdomain.ID
+	Payload        []byte
 	Status         Status
 	CurrentStep    Step
 	CompletedSteps []Step
@@ -92,6 +93,15 @@ func New(id ID, paymentID paymentdomain.ID, seed uint64, at time.Time) (Instance
 		return Instance{}, ErrInvalidTransition
 	}
 	return Instance{ID: id, PaymentID: paymentID, Status: StatusRunning, CurrentStep: StepAuthorize, Seed: seed, Version: 1, UpdatedAt: at.UTC()}, nil
+}
+
+func NewWithPayload(id ID, paymentID paymentdomain.ID, payload []byte, seed uint64, at time.Time) (Instance, error) {
+	instance, err := New(id, paymentID, seed, at)
+	if err != nil {
+		return Instance{}, err
+	}
+	instance.Payload = append([]byte(nil), payload...)
+	return instance, nil
 }
 
 func (i Instance) Validate() error {
