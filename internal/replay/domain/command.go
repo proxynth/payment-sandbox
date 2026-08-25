@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"time"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 )
@@ -14,11 +15,13 @@ const (
 	CommandCapture       CommandType = "capture"
 	CommandRefund        CommandType = "refund"
 	CommandCancel        CommandType = "cancel"
+	CommandAdvanceTime   CommandType = "advance_time"
+	CommandExecuteAsync  CommandType = "execute_async"
 )
 
 func (commandType CommandType) Valid() bool {
 	switch commandType {
-	case CommandCreatePayment, CommandAuthorize, CommandCapture, CommandRefund, CommandCancel:
+	case CommandCreatePayment, CommandAuthorize, CommandCapture, CommandRefund, CommandCancel, CommandAdvanceTime, CommandExecuteAsync:
 		return true
 	default:
 		return false
@@ -28,9 +31,11 @@ func (commandType CommandType) Valid() bool {
 // Command represents one ordered business operation in a scenario. Amount is
 // required for create, capture, and refund, and must be empty otherwise.
 type Command struct {
-	Type      CommandType
-	PaymentID paymentdomain.ID
-	Amount    paymentdomain.Money
+	Type        CommandType
+	PaymentID   paymentdomain.ID
+	Amount      paymentdomain.Money
+	Duration    time.Duration
+	OperationID string
 }
 
 func (command Command) Validate() error {
@@ -38,7 +43,7 @@ func (command Command) Validate() error {
 		return fmt.Errorf("%w: %q", ErrInvalidCommandType, command.Type)
 	}
 
-	if command.PaymentID == "" {
+	if command.PaymentID == "" && command.Type != CommandAdvanceTime && command.Type != CommandExecuteAsync {
 		return ErrInvalidCommandPaymentID
 	}
 
@@ -54,6 +59,14 @@ func (command Command) Validate() error {
 	case CommandAuthorize, CommandCancel:
 		if command.Amount.Amount() != 0 || command.Amount.Currency() != "" {
 			return ErrInvalidCommandAmount
+		}
+	case CommandAdvanceTime:
+		if command.PaymentID != "" || command.Amount.Amount() != 0 || command.Amount.Currency() != "" || command.Duration <= 0 {
+			return ErrInvalidCommandAmount
+		}
+	case CommandExecuteAsync:
+		if command.PaymentID != "" || command.Amount.Amount() != 0 || command.Amount.Currency() != "" || command.OperationID == "" {
+			return ErrInvalidCommandPaymentID
 		}
 	}
 

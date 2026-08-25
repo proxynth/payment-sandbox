@@ -54,6 +54,12 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 	if err != nil {
 		return Result{}, err
 	}
+	if configurable, ok := provider.(providerdomain.ConfigurableProvider); ok {
+		provider, err = configurable.Configure(scenario.Provider.Profile)
+		if err != nil {
+			return Result{}, err
+		}
+	}
 
 	virtualClock, err := clock.NewVirtualClock(scenario.InitialVirtualTime)
 	if err != nil {
@@ -70,8 +76,7 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 		repository.payments[payment.ID()] = payment
 	}
 
-	services := commandServices{repository: repository, provider: provider}
-	services.now = virtualClock.Now()
+	services := commandServices{repository: repository, provider: provider, clock: virtualClock, pending: make(map[string]providerdomain.AsyncOperation)}
 	asyncOperations := make([]providerdomain.AsyncOperation, 0)
 	for index, command := range scenario.Commands {
 		if err := ctx.Err(); err != nil {
@@ -103,7 +108,8 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 type commandServices struct {
 	repository *memoryRepository
 	provider   providerdomain.Provider
-	now        time.Time
+	clock      *clock.VirtualClock
+	pending    map[string]providerdomain.AsyncOperation
 }
 
 func (s commandServices) execute(
@@ -130,11 +136,10 @@ func (s commandServices) execute(
 		if err != nil {
 			return nil, err
 		}
-		_, err = paymentapplication.NewAuthorizePayment(s.repository).Execute(
-			ctx,
-			paymentapplication.AuthorizePaymentCommand{PaymentID: command.PaymentID},
-		)
-		return result.AsyncOperations, err
+		return s.apply(ctx, command, payment, result, func() error {
+			_, err := paymentapplication.NewAuthorizePayment(s.repository).Execute(ctx, paymentapplication.AuthorizePaymentCommand{PaymentID: command.PaymentID})
+			return err
+		})
 	case replaydomain.CommandCapture:
 		payment, err := s.repository.FindByID(ctx, command.PaymentID)
 		if err != nil {
@@ -144,15 +149,14 @@ func (s commandServices) execute(
 		if err != nil {
 			return nil, err
 		}
-		_, err = paymentapplication.NewCapturePayment(s.repository).Execute(
-			ctx,
-			paymentapplication.CapturePaymentCommand{
+		return s.apply(ctx, command, payment, result, func() error {
+			_, err := paymentapplication.NewCapturePayment(s.repository).Execute(ctx, paymentapplication.CapturePaymentCommand{
 				PaymentID: command.PaymentID,
 				Amount:    command.Amount.Amount(),
 				Currency:  command.Amount.Currency(),
-			},
-		)
-		return result.AsyncOperations, err
+			})
+			return err
+		})
 	case replaydomain.CommandRefund:
 		payment, err := s.repository.FindByID(ctx, command.PaymentID)
 		if err != nil {
@@ -162,15 +166,14 @@ func (s commandServices) execute(
 		if err != nil {
 			return nil, err
 		}
-		_, err = paymentapplication.NewRefundPayment(s.repository).Execute(
-			ctx,
-			paymentapplication.RefundPaymentCommand{
+		return s.apply(ctx, command, payment, result, func() error {
+			_, err := paymentapplication.NewRefundPayment(s.repository).Execute(ctx, paymentapplication.RefundPaymentCommand{
 				PaymentID: command.PaymentID,
 				Amount:    command.Amount.Amount(),
 				Currency:  command.Amount.Currency(),
-			},
-		)
-		return result.AsyncOperations, err
+			})
+			return err
+		})
 	case replaydomain.CommandCancel:
 		payment, err := s.repository.FindByID(ctx, command.PaymentID)
 		if err != nil {
@@ -180,20 +183,86 @@ func (s commandServices) execute(
 		if err != nil {
 			return nil, err
 		}
-		_, err = paymentapplication.NewCancelPayment(s.repository).Execute(
-			ctx,
-			paymentapplication.CancelPaymentCommand{PaymentID: command.PaymentID},
-		)
-		return result.AsyncOperations, err
+		return s.apply(ctx, command, payment, result, func() error {
+			_, err := paymentapplication.NewCancelPayment(s.repository).Execute(ctx, paymentapplication.CancelPaymentCommand{PaymentID: command.PaymentID})
+			return err
+		})
+	case replaydomain.CommandAdvanceTime:
+		return nil, s.clock.Advance(command.Duration)
+	case replaydomain.CommandExecuteAsync:
+		operation, exists := s.pending[command.OperationID]
+		if !exists {
+			return nil, ErrAsyncOperationNotFound
+		}
+		if s.clock.Now().Before(operation.ScheduledAt) {
+			return nil, ErrAsyncOperationNotDue
+		}
+		asyncProvider, ok := s.provider.(providerdomain.AsyncExecutor)
+		if !ok {
+			return nil, ErrAsyncOperationNotFound
+		}
+		payment, err := s.repository.FindByID(ctx, operation.PaymentID)
+		if err != nil {
+			return nil, err
+		}
+		result, err := validateProviderResult(asyncProvider.ExecuteAsync(ctx, operation))
+		if err != nil {
+			return nil, err
+		}
+		delete(s.pending, operation.ID)
+		return s.apply(ctx, replaydomain.Command{Type: replaydomain.CommandType(operation.Type), PaymentID: operation.PaymentID}, payment, result, func() error {
+			return s.transition(ctx, replaydomain.Command{Type: replaydomain.CommandType(operation.Type), PaymentID: operation.PaymentID}, payment)
+		})
 	default:
 		return nil, replaydomain.ErrInvalidCommand
+	}
+}
+
+func (s commandServices) apply(ctx context.Context, command replaydomain.Command, payment *paymentdomain.Payment, result providerdomain.OperationResult, transition func() error) ([]providerdomain.AsyncOperation, error) {
+	switch result.Outcome {
+	case providerdomain.OutcomeSucceeded:
+		if err := transition(); err != nil {
+			return nil, err
+		}
+	case providerdomain.OutcomeFailed:
+		if command.Type == replaydomain.CommandAuthorize {
+			if _, err := paymentapplication.NewFailPayment(s.repository).Execute(ctx, paymentapplication.FailPaymentCommand{PaymentID: command.PaymentID}); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, ErrProviderOperationFailed
+		}
+	case providerdomain.OutcomePending:
+		for _, operation := range result.AsyncOperations {
+			s.pending[operation.ID] = operation
+		}
+	}
+	return appendAsyncOperations(nil, result.AsyncOperations...), nil
+}
+
+func (s commandServices) transition(ctx context.Context, command replaydomain.Command, payment *paymentdomain.Payment) error {
+	switch command.Type {
+	case replaydomain.CommandAuthorize:
+		_, err := paymentapplication.NewAuthorizePayment(s.repository).Execute(ctx, paymentapplication.AuthorizePaymentCommand{PaymentID: payment.ID()})
+		return err
+	case replaydomain.CommandCapture:
+		_, err := paymentapplication.NewCapturePayment(s.repository).Execute(ctx, paymentapplication.CapturePaymentCommand{PaymentID: payment.ID(), Amount: command.Amount.Amount(), Currency: command.Amount.Currency()})
+		return err
+	case replaydomain.CommandRefund:
+		_, err := paymentapplication.NewRefundPayment(s.repository).Execute(ctx, paymentapplication.RefundPaymentCommand{PaymentID: payment.ID(), Amount: command.Amount.Amount(), Currency: command.Amount.Currency()})
+		return err
+	case replaydomain.CommandCancel:
+		_, err := paymentapplication.NewCancelPayment(s.repository).Execute(ctx, paymentapplication.CancelPaymentCommand{PaymentID: payment.ID()})
+		return err
+	default:
+		return replaydomain.ErrInvalidCommand
 	}
 }
 
 func (s commandServices) authorize(ctx context.Context, payment *paymentdomain.Payment) (providerResult providerdomain.OperationResult, err error) {
 	return validateProviderResult(s.provider.Authorize(ctx, providerdomain.AuthorizeRequest{
 		Payment: paymentSnapshot(payment),
-		At:      s.now,
+		At:      s.clock.Now(),
 	}))
 }
 
@@ -201,7 +270,7 @@ func (s commandServices) capture(ctx context.Context, payment *paymentdomain.Pay
 	return validateProviderResult(s.provider.Capture(ctx, providerdomain.CaptureRequest{
 		Payment: paymentSnapshot(payment),
 		Amount:  amount,
-		At:      s.now,
+		At:      s.clock.Now(),
 	}))
 }
 
@@ -209,14 +278,14 @@ func (s commandServices) refund(ctx context.Context, payment *paymentdomain.Paym
 	return validateProviderResult(s.provider.Refund(ctx, providerdomain.RefundRequest{
 		Payment: paymentSnapshot(payment),
 		Amount:  amount,
-		At:      s.now,
+		At:      s.clock.Now(),
 	}))
 }
 
 func (s commandServices) cancel(ctx context.Context, payment *paymentdomain.Payment) (providerResult providerdomain.OperationResult, err error) {
 	return validateProviderResult(s.provider.Cancel(ctx, providerdomain.CancelRequest{
 		Payment: paymentSnapshot(payment),
-		At:      s.now,
+		At:      s.clock.Now(),
 	}))
 }
 

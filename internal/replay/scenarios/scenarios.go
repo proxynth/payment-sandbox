@@ -32,7 +32,21 @@ func New(
 	amount paymentdomain.Money,
 	seed uint64,
 ) (*replaydomain.Scenario, error) {
-	commands, err := commandsFor(name, amount)
+	return NewWithProfile(name, providerID, "success", scenarioID, initialVirtualTime, amount, seed)
+}
+
+// NewWithProfile builds a scenario with provider-owned deterministic behaviour.
+func NewWithProfile(
+	name Name,
+	providerID providerdomain.ProviderID,
+	profile string,
+	scenarioID replaydomain.ScenarioID,
+	initialVirtualTime time.Time,
+	amount paymentdomain.Money,
+	seed uint64,
+) (*replaydomain.Scenario, error) {
+	paymentID := paymentdomain.ID(string(scenarioID) + "-payment")
+	commands, err := commandsFor(name, paymentID, amount)
 	if err != nil {
 		return nil, err
 	}
@@ -41,26 +55,26 @@ func New(
 		scenarioID,
 		nil,
 		commands,
-		replaydomain.ProviderConfiguration{ID: providerID},
+		replaydomain.ProviderConfiguration{ID: providerID, Profile: profile},
 		initialVirtualTime,
 		replaydomain.DeterministicConfiguration{Seed: seed},
 	)
 }
 
-func commandsFor(name Name, amount paymentdomain.Money) ([]replaydomain.Command, error) {
+func commandsFor(name Name, paymentID paymentdomain.ID, amount paymentdomain.Money) ([]replaydomain.Command, error) {
 	base := []replaydomain.Command{
-		{Type: replaydomain.CommandCreatePayment, PaymentID: "payment-1", Amount: amount},
-		{Type: replaydomain.CommandAuthorize, PaymentID: "payment-1"},
+		{Type: replaydomain.CommandCreatePayment, PaymentID: paymentID, Amount: amount},
+		{Type: replaydomain.CommandAuthorize, PaymentID: paymentID},
 	}
 
 	switch name {
 	case PaymentLifecycle:
 		return append(base,
-			replaydomain.Command{Type: replaydomain.CommandCapture, PaymentID: "payment-1", Amount: amount},
-			replaydomain.Command{Type: replaydomain.CommandRefund, PaymentID: "payment-1", Amount: amount},
+			replaydomain.Command{Type: replaydomain.CommandCapture, PaymentID: paymentID, Amount: amount},
+			replaydomain.Command{Type: replaydomain.CommandRefund, PaymentID: paymentID, Amount: amount},
 		), nil
 	case PaymentCancellation:
-		return append(base, replaydomain.Command{Type: replaydomain.CommandCancel, PaymentID: "payment-1"}), nil
+		return append(base, replaydomain.Command{Type: replaydomain.CommandCancel, PaymentID: paymentID}), nil
 	default:
 		return nil, ErrInvalidName
 	}

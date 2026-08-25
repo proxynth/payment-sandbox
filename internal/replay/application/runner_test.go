@@ -206,6 +206,7 @@ func TestRunnerReturnsProviderAsynchronousOperationsWithVirtualTime(t *testing.T
 		Outcome: providerdomain.OutcomeSucceeded,
 		AsyncOperations: []providerdomain.AsyncOperation{{
 			ID:          "job-1",
+			PaymentID:   "payment-1",
 			Type:        "provider.callback",
 			Payload:     []byte("payload"),
 			ScheduledAt: scheduledAt,

@@ -77,13 +77,14 @@ type CancelRequest struct {
 // The runtime is responsible for persisting and executing it.
 type AsyncOperation struct {
 	ID          string
+	PaymentID   paymentdomain.ID
 	Type        string
 	Payload     []byte
 	ScheduledAt time.Time
 }
 
 func (operation AsyncOperation) Validate() error {
-	if operation.ID == "" || operation.Type == "" || operation.ScheduledAt.IsZero() {
+	if operation.ID == "" || operation.PaymentID == "" || operation.Type == "" || operation.ScheduledAt.IsZero() {
 		return ErrInvalidAsyncOperation
 	}
 
@@ -114,6 +115,19 @@ type OperationResult struct {
 	Outcome           OperationOutcome
 	ProviderReference string
 	AsyncOperations   []AsyncOperation
+}
+
+// ConfigurableProvider creates an execution-scoped provider configured for a
+// deterministic scenario. The configuration remains opaque to the replay
+// core; only the provider interprets it.
+type ConfigurableProvider interface {
+	Configure(string) (Provider, error)
+}
+
+// AsyncExecutor resumes provider-owned asynchronous work once the runtime has
+// reached its scheduled virtual time.
+type AsyncExecutor interface {
+	ExecuteAsync(context.Context, AsyncOperation) (OperationResult, error)
 }
 
 func (result OperationResult) Validate() error {

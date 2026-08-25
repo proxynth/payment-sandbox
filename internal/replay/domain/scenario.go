@@ -10,7 +10,8 @@ import (
 type ScenarioID string
 
 type ProviderConfiguration struct {
-	ID providerdomain.ProviderID
+	ID      providerdomain.ProviderID
+	Profile string
 }
 
 func (configuration ProviderConfiguration) Validate() error {
