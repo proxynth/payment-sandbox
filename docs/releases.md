@@ -27,8 +27,9 @@ Release creation is automated from merges to `main`:
    notes are correct.
 3. The workflow creates the version tag automatically, without creating a
    GitHub release through Release Please.
-4. The tag event validates the tagged commit and GoReleaser creates the
-   immutable GitHub release and uploads the application artifacts.
+4. The workflow validates the tagged commit and GoReleaser creates the
+   immutable GitHub release and uploads the application artifacts in the same
+   run. A manually pushed version tag can also trigger the publication path.
 
 The first release starts at `0.1.0`, as configured in
 `.release-please-manifest.json`. Subsequent versions are derived from
