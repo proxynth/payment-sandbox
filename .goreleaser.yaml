@@ -30,6 +30,9 @@ archives:
         formats:
           - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - .env.example
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"

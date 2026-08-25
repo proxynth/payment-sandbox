@@ -84,18 +84,15 @@ make build
 
 The binary is written to `bin/payment-sandbox`.
 
-Run the current application bootstrap:
+Run the application from the repository:
 
 ```bash
 make run
 ```
 
-At the current project stage, this command loads and validates configuration,
-opens the SQLite database, applies migrations and writes a startup log. The
-bootstrap then exits; the HTTP server composition and long-running process are
-not wired into `internal/app` yet. The configured HTTP address is therefore
-ready for the later application-composition work, but it is not a live endpoint
-after `make run` returns.
+This starts the configured HTTP server and keeps the process running until you
+stop it with `Ctrl+C`. For installing a published release without a repository
+checkout or Go, use the [user installation guide](installation.md) instead.
 
 ## Useful commands
 
