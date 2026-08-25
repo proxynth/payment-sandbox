@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/proxynth/payment-sandbox/compare/v1.2.0...v1.2.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* :lock: harden public readiness ([#90](https://github.com/proxynth/payment-sandbox/issues/90)) ([89e0207](https://github.com/proxynth/payment-sandbox/commit/89e02073706a4950ec20507a10eda61b17057c23))
+
 ## [1.2.0](https://github.com/proxynth/payment-sandbox/compare/v1.1.0...v1.2.0) (2026-08-25)
 
 
