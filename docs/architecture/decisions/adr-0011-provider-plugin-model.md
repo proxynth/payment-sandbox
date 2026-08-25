@@ -1039,3 +1039,14 @@ The provider plugin model therefore enables long-term extensibility without comp
 - ADR-0008 — Observability & Diagnostics
 - ADR-0009 — Deterministic Scenario Replay
 - ADR-0010 — Virtual Clock
+
+## Deterministic behaviour clarification
+
+Provider configuration is carried as opaque scenario input and interpreted by
+the selected provider implementation. The replay core selects and invokes a
+provider but never branches on provider identity or profile. Providers may
+return succeeded, failed or pending outcomes. When a provider returns pending
+work, the scheduler and worker execute the generic operation, while the
+originating provider owns its interpretation and returns the eventual
+business outcome. The payment domain remains responsible for validating the
+resulting transition.

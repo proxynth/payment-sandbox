@@ -1102,3 +1102,12 @@ Deterministic replay therefore becomes a fundamental architectural capability su
 - ADR-0007 — Event Log & Audit Trail
 - ADR-0008 — Observability & Diagnostics
 - ADR-0010 — Virtual Clock
+
+## Asynchronous replay clarification
+
+A replay scenario includes the provider behaviour configuration and the ordered
+time and continuation inputs required to execute pending work. A pending
+provider result does not imply a payment transition. Replay advances virtual
+time explicitly, executes due provider-owned operations, and applies their
+result through the canonical domain state machine. The operation identifier,
+payment identifier and scheduled time are observable replay data.

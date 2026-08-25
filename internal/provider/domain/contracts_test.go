@@ -83,6 +83,7 @@ func TestOperationResult_RejectsUnknownOutcome(t *testing.T) {
 func TestOperationResult_ValidatesAsynchronousOperations(t *testing.T) {
 	valid := AsyncOperation{
 		ID:          "job-1",
+		PaymentID:   "payment-1",
 		Type:        "provider.callback",
 		Payload:     []byte("payload"),
 		ScheduledAt: time.Date(2026, 8, 24, 12, 5, 0, 0, time.UTC),

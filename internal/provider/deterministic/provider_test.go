@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
@@ -108,6 +109,33 @@ func TestProvider_RejectsInvalidSnapshot(t *testing.T) {
 
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Authorize() error = %v, want %v", err, ErrInvalidRequest)
+	}
+}
+
+func TestProvider_SeededProfileUsesSeedDeterministically(t *testing.T) {
+	snapshot := validSnapshot(t)
+	at := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	want := map[uint64]providerdomain.OperationOutcome{
+		0: providerdomain.OutcomeSucceeded,
+		1: providerdomain.OutcomeFailed,
+		2: providerdomain.OutcomePending,
+	}
+	for seed, expected := range want {
+		configured, err := New("test").Configure("seeded", seed)
+		if err != nil {
+			t.Fatalf("Configure(%d) error = %v", seed, err)
+		}
+		first, err := configured.Authorize(context.Background(), providerdomain.AuthorizeRequest{Payment: snapshot, At: at})
+		if err != nil {
+			t.Fatalf("Authorize(%d) error = %v", seed, err)
+		}
+		second, err := configured.Authorize(context.Background(), providerdomain.AuthorizeRequest{Payment: snapshot, At: at})
+		if err != nil {
+			t.Fatalf("second Authorize(%d) error = %v", seed, err)
+		}
+		if first.Outcome != expected || !reflect.DeepEqual(first, second) {
+			t.Fatalf("seed %d results = %+v and %+v, want deterministic %q", seed, first, second, expected)
+		}
 	}
 }
 

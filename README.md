@@ -208,7 +208,7 @@ The initial scope is intentionally limited to:
 * webhook delivery attempts;
 * idempotency.
 
-Future versions may introduce provider-specific profiles, additional payment methods, disputes, subscriptions and record/replay capabilities.
+Future versions may introduce additional payment methods, disputes and subscriptions.
 
 ## Planned architecture
 
