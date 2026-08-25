@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/proxynth/payment-sandbox/compare/v0.3.0...v0.3.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* :bug: avoid duplicate release publication ([#68](https://github.com/proxynth/payment-sandbox/issues/68)) ([e5e74fc](https://github.com/proxynth/payment-sandbox/commit/e5e74fc4ea356e032f033fc7309f6e805d63ce6c))
+
 ## [0.3.0](https://github.com/proxynth/payment-sandbox/compare/v0.2.0...v0.3.0) (2026-08-25)
 
 
