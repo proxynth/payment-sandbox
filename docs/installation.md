@@ -10,7 +10,7 @@ Prefer the latest stable release. Development builds and source checkouts are
 intended for contributors; see the [contributor getting started guide](getting-started.md)
 when working on the repository itself.
 
-Release tags use the `vMAJOR.MINOR.PATCH` format, such as `v1.1.0`.
+Release tags use the `vMAJOR.MINOR.PATCH` format, such as `v1.2.1`.
 
 Each release provides these archives:
 
@@ -21,8 +21,8 @@ Each release provides these archives:
 | Windows | `payment-sandbox_<version>_windows_amd64.zip` | `payment-sandbox_<version>_windows_arm64.zip` |
 
 The filenames use the version without the leading `v`. For example, the
-`v1.1.0` Linux ARM64 archive is
-`payment-sandbox_1.1.0_linux_arm64.tar.gz`.
+`v1.2.1` Linux ARM64 archive is
+`payment-sandbox_1.2.1_linux_arm64.tar.gz`.
 
 ## Download and verify an archive
 
@@ -32,33 +32,33 @@ from the same release. Verify the archive before extracting it.
 On macOS or Linux, from the directory containing both files:
 
 ```bash
-sha256sum --check payment-sandbox_1.1.0_checksums.txt --ignore-missing
+sha256sum --check payment-sandbox_1.2.1_checksums.txt --ignore-missing
 ```
 
 If `sha256sum` is not available on macOS, use:
 
 ```bash
-shasum -a 256 payment-sandbox_1.1.0_linux_arm64.tar.gz
+shasum -a 256 payment-sandbox_1.2.1_linux_arm64.tar.gz
 ```
 
 Compare the printed digest with the matching line in the checksums file.
 On Windows, use PowerShell:
 
 ```powershell
-Get-FileHash .\payment-sandbox_1.1.0_windows_amd64.zip -Algorithm SHA256
+Get-FileHash .\payment-sandbox_1.2.1_windows_amd64.zip -Algorithm SHA256
 ```
 
 Compare the result with the matching entry in
-`payment-sandbox_1.1.0_checksums.txt`.
+`payment-sandbox_1.2.1_checksums.txt`.
 
 ## Extract and install
 
 Extract a macOS or Linux archive:
 
 ```bash
-mkdir payment-sandbox-1.1.0-linux-arm64
-tar -xzf payment-sandbox_1.1.0_linux_arm64.tar.gz -C payment-sandbox-1.1.0-linux-arm64
-cd payment-sandbox-1.1.0-linux-arm64
+mkdir payment-sandbox-1.2.1-linux-arm64
+tar -xzf payment-sandbox_1.2.1_linux_arm64.tar.gz -C payment-sandbox-1.2.1-linux-arm64
+cd payment-sandbox-1.2.1-linux-arm64
 ```
 
 The archive contains the `payment-sandbox` binary and `.env.example`.

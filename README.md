@@ -280,13 +280,41 @@ Replay / Diagnostics
 ## Project status
 
 Payment Sandbox is under active development. The latest published release is
-`v1.1.0`; the core payment API, durable scheduler, virtual time, deterministic
-providers, Saga orchestration and diagnostic endpoints are available for local
-and integration testing.
+`v1.2.1`.
 
-The HTTP API and scenario model may still evolve. Compatibility guarantees are
-defined by the documentation for each published release rather than by the
-major version alone.
+### Implemented
+
+The current release provides the following capabilities for local and
+integration testing:
+
+- canonical payment lifecycle API;
+- durable SQLite-backed scheduler and asynchronous jobs;
+- virtual business time with wall-clock lease recovery;
+- deterministic fake, Stripe and Adyen provider profiles;
+- immutable payment event history and diagnostics;
+- webhook endpoint registration and outbound delivery;
+- deterministic scenario replay;
+- Saga orchestration for provider-backed payment workflows.
+
+### Currently evolving
+
+- the HTTP API and its public compatibility guarantees;
+- the provider profile and failure-injection model;
+- the scenario model and replay ergonomics;
+- operational documentation and observability details.
+
+Compatibility guarantees are defined by the documentation for each published
+release rather than by the major version alone.
+
+### Planned
+
+The following areas are intentionally outside the current stable contract:
+
+- a versioned, standalone scenario file format;
+- broader provider behaviour profiles and integration examples;
+- additional public API capabilities built on the existing domain model.
+
+Planned items are design directions, not promises for a specific release.
 
 ## Non-goals
 
