@@ -13,6 +13,9 @@ when working on the repository itself.
 
 Release tags use the `vMAJOR.MINOR.PATCH` format, for example `v<version>`.
 
+For the complete route reference, authentication details and integration
+examples, see the [HTTP API guide](api.md) and its [OpenAPI contract](openapi.json).
+
 Each release provides these archives:
 
 | Operating system | Intel/AMD 64-bit | ARM 64-bit |
