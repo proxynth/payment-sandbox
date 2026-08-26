@@ -2,6 +2,8 @@
 
 Payment Sandbox is a payment systems simulator written in Go.
 
+[![Latest release](https://img.shields.io/github/v/release/proxynth/payment-sandbox?sort=semver)](https://github.com/proxynth/payment-sandbox/releases/latest)
+
 It helps backend developers test payment integrations against realistic business workflows, asynchronous events and distributed-system failures without depending on a real payment service provider.
 
 > Payment Sandbox is not a payment service provider and does not process real money.
@@ -279,8 +281,10 @@ Replay / Diagnostics
 
 ## Project status
 
-Payment Sandbox is under active development. The latest published release is
-`v1.2.1`.
+Payment Sandbox is under active development. Published versions are listed on
+the [GitHub Releases page](https://github.com/proxynth/payment-sandbox/releases).
+The latest release can always be found at
+[/releases/latest](https://github.com/proxynth/payment-sandbox/releases/latest).
 
 ### Implemented
 
@@ -315,6 +319,9 @@ The following areas are intentionally outside the current stable contract:
 - additional public API capabilities built on the existing domain model.
 
 Planned items are design directions, not promises for a specific release.
+
+For a local build, run `go run ./cmd/payment-sandbox --version`; published
+release binaries report the version injected from their release tag.
 
 ## Non-goals
 

@@ -10,7 +10,7 @@ Prefer the latest stable release. Development builds and source checkouts are
 intended for contributors; see the [contributor getting started guide](getting-started.md)
 when working on the repository itself.
 
-Release tags use the `vMAJOR.MINOR.PATCH` format, such as `v1.2.1`.
+Release tags use the `vMAJOR.MINOR.PATCH` format, for example `v<version>`.
 
 Each release provides these archives:
 
@@ -20,9 +20,11 @@ Each release provides these archives:
 | Linux | `payment-sandbox_<version>_linux_amd64.tar.gz` | `payment-sandbox_<version>_linux_arm64.tar.gz` |
 | Windows | `payment-sandbox_<version>_windows_amd64.zip` | `payment-sandbox_<version>_windows_arm64.zip` |
 
-The filenames use the version without the leading `v`. For example, the
-`v1.2.1` Linux ARM64 archive is
-`payment-sandbox_1.2.1_linux_arm64.tar.gz`.
+The examples below use `<version>` as a placeholder. Replace it with the
+version you selected from the Releases page. Filenames use the version without
+the leading `v`. For a release tagged
+`v<version>`, the Linux ARM64 archive is named
+`payment-sandbox_<version>_linux_arm64.tar.gz`.
 
 ## Download and verify an archive
 
@@ -32,36 +34,37 @@ from the same release. Verify the archive before extracting it.
 On macOS or Linux, from the directory containing both files:
 
 ```bash
-sha256sum --check payment-sandbox_1.2.1_checksums.txt --ignore-missing
+sha256sum --check payment-sandbox_<version>_checksums.txt --ignore-missing
 ```
 
 If `sha256sum` is not available on macOS, use:
 
 ```bash
-shasum -a 256 payment-sandbox_1.2.1_linux_arm64.tar.gz
+shasum -a 256 payment-sandbox_<version>_linux_arm64.tar.gz
 ```
 
 Compare the printed digest with the matching line in the checksums file.
 On Windows, use PowerShell:
 
 ```powershell
-Get-FileHash .\payment-sandbox_1.2.1_windows_amd64.zip -Algorithm SHA256
+Get-FileHash .\payment-sandbox_<version>_windows_amd64.zip -Algorithm SHA256
 ```
 
 Compare the result with the matching entry in
-`payment-sandbox_1.2.1_checksums.txt`.
+`payment-sandbox_<version>_checksums.txt`.
 
 ## Extract and install
 
 Extract a macOS or Linux archive:
 
 ```bash
-mkdir payment-sandbox-1.2.1-linux-arm64
-tar -xzf payment-sandbox_1.2.1_linux_arm64.tar.gz -C payment-sandbox-1.2.1-linux-arm64
-cd payment-sandbox-1.2.1-linux-arm64
+mkdir payment-sandbox-<version>-linux-arm64
+tar -xzf payment-sandbox_<version>_linux_arm64.tar.gz -C payment-sandbox-<version>-linux-arm64
+cd payment-sandbox-<version>-linux-arm64
 ```
 
-The archive contains the `payment-sandbox` binary and `.env.example`.
+The archive contains the `payment-sandbox` binary, `.env.example`, and the
+`LICENSE` file.
 Optionally install the binary in a user-local directory:
 
 ```bash
@@ -111,6 +114,12 @@ Start the application from the directory containing the database file:
 
 ```bash
 payment-sandbox
+```
+
+The binary also exposes its embedded release version:
+
+```bash
+payment-sandbox --version
 ```
 
 The process stays running and writes startup information to the configured
