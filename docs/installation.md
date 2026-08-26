@@ -1,7 +1,8 @@
 # Install Payment Sandbox
 
 This guide is for using a published Payment Sandbox release. It does not
-require Git, Go or a repository checkout.
+require Git, Go or a repository checkout and is the recommended path for
+trying the product as a user.
 
 ## Choose a release
 

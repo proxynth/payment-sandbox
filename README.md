@@ -29,7 +29,7 @@ Payment Sandbox aims to provide:
 * observable execution timelines;
 * a local-first and CI-friendly developer experience.
 
-## Architecture
+## Architecture overview
 
 Payment Sandbox is designed as a deterministic payment simulation platform.
 
@@ -69,11 +69,16 @@ Payment Sandbox can be used to test situations such as:
 
 ## Development
 
-To install and run a published release without cloning the repository or
-installing Go, start with the [user installation guide](docs/installation.md).
+Choose the path that matches your goal:
 
-Start with the [Getting Started guide](docs/getting-started.md) for a clean
-checkout, environment setup and the local validation workflow.
+* **Use Payment Sandbox:** follow the [user installation guide](docs/installation.md)
+  to download the latest release without cloning the repository or installing
+  Go. This is the recommended path for trying the product.
+* **Explore or contribute to the code:** follow the [Getting Started
+  guide](docs/getting-started.md) to clone, configure and validate a source
+  checkout.
+
+Both paths lead to the same HTTP API and first-payment walkthrough.
 
 See the [Contributing guide](CONTRIBUTING.md) for module boundaries, testing,
 commits and pull requests.
@@ -103,6 +108,36 @@ make run
 ```
 
 The application loads configuration from environment variables during startup.
+
+### Try it from source
+
+If you have cloned the repository, start the sandbox from its root:
+
+```bash
+make run
+```
+
+In another terminal, check that it is ready, create a payment and authorize it:
+
+```bash
+curl http://127.0.0.1:8080/health/ready
+
+curl -X POST http://127.0.0.1:8080/payments \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"demo-payment","amount":1000,"currency":"EUR"}'
+
+curl -X POST http://127.0.0.1:8080/payments/demo-payment/authorize
+curl http://127.0.0.1:8080/payments/demo-payment
+```
+
+This demonstrates the basic payment lifecycle without requiring a provider
+account or a separate application. Continue with the
+[complete installation and first-payment walkthrough](docs/installation.md#make-a-first-payment-request)
+to explore webhooks and the local database.
+
+If you are using a published binary, follow the same scenario from the
+[release installation guide](docs/installation.md#make-a-first-payment-request)
+after downloading and starting the latest release.
 
 ### Configuration
 
@@ -227,19 +262,18 @@ The initial scope is intentionally limited to:
 
 Future versions may introduce additional payment methods, disputes and subscriptions.
 
-## Planned architecture
+## Architecture
 
-Payment Sandbox is designed as a modular monolith.
+Payment Sandbox is implemented as a modular monolith. The current runtime is
+organized around these modules:
 
-The main modules are expected to include:
-
-* Payment;
-* Simulation;
-* Webhook;
-* Idempotency;
-* Scheduler;
-* Administration;
-* Observability.
+* Payment and its state machine;
+* Provider profiles and deterministic execution;
+* Durable scheduling and asynchronous work;
+* Saga orchestration;
+* Webhook registration and delivery;
+* Scenario replay and diagnostics;
+* Administration and platform concerns.
 
 External concerns such as persistence, clocks, random generation and outbound HTTP delivery are isolated behind explicit architectural boundaries when substitution provides real value.
 
@@ -349,9 +383,14 @@ Do not use real payment credentials, cardholder data or production secrets.
 
 ## Further reading
 
-- Architecture overview
-- ADR Index
-- Design Principles
+- [Architecture overview](docs/architecture/README.md)
+- [Architecture diagrams](docs/architecture/diagrams.md)
+- [Architecture principles](docs/architecture/principles.md)
+- [Architectural Decision Records](docs/architecture/decisions/)
+- [Getting Started guide](docs/getting-started.md)
+- [Installation and first-payment walkthrough](docs/installation.md#make-a-first-payment-request)
+- [Provider guide](docs/providers.md)
+- [Scenario guide](docs/scenarios.md)
 
 ## Contributing
 
