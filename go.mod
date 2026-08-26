@@ -3,6 +3,7 @@ module proxynth/payment-sandbox
 go 1.25.7
 
 require (
+	github.com/joho/godotenv v1.5.1
 	github.com/pressly/goose/v3 v3.27.3
 	modernc.org/sqlite v1.56.0
 )
