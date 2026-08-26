@@ -61,12 +61,19 @@
     "/admin/time/advance": {
       "post": {"tags": ["Administration"], "summary": "Advance virtual time", "operationId": "advanceVirtualTime", "security": [{"AdminBearerAuth": []}], "requestBody": {"$ref": "#/components/requestBodies/AdvanceTime"}, "responses": {"200": {"$ref": "#/components/responses/Time"}, "400": {"$ref": "#/components/responses/InvalidRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "409": {"$ref": "#/components/responses/Conflict"}, "415": {"$ref": "#/components/responses/UnsupportedMediaType"}}}
     },
+    "/admin/scenarios": {
+      "post": {"tags": ["Administration"], "summary": "Create a scenario", "operationId": "createScenario", "security": [{"AdminBearerAuth": []}], "requestBody": {"$ref": "#/components/requestBodies/Scenario"}, "responses": {"201": {"$ref": "#/components/responses/Scenario"}, "400": {"$ref": "#/components/responses/InvalidRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "409": {"$ref": "#/components/responses/Conflict"}}}
+    },
     "/admin/providers": {
       "get": {"tags": ["Administration"], "summary": "List providers", "operationId": "listProviders", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"description": "Available providers.", "content": {"application/json": {"schema": {"type": "object", "required": ["providers"], "properties": {"providers": {"type": "array", "items": {"type": "string"}}}}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
     },
     "/admin/scenarios/{scenarioId}": {
       "parameters": [{"$ref": "#/components/parameters/ScenarioId"}],
       "get": {"tags": ["Administration"], "summary": "Inspect a scenario", "operationId": "getScenario", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/Scenario"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}
+    },
+    "/admin/scenarios/{scenarioId}/execute": {
+      "parameters": [{"$ref": "#/components/parameters/ScenarioId"}],
+      "post": {"tags": ["Administration"], "summary": "Execute a stored scenario", "operationId": "executeScenario", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/ScenarioExecution"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}
     },
     "/admin/payments/{paymentId}/timeline": {
       "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
@@ -87,7 +94,8 @@
     },
     "requestBodies": {
       "Amount": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AmountRequest"}, "example": {"amount": 1000, "currency": "EUR"}}}},
-      "AdvanceTime": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AdvanceTimeRequest"}, "example": {"by": "1h"}}}}
+      "AdvanceTime": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AdvanceTimeRequest"}, "example": {"by": "1h"}}}},
+      "Scenario": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Scenario"}}}}
     },
     "schemas": {
       "ErrorResponse": {"type": "object", "required": ["error"], "properties": {"error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}}},
@@ -102,7 +110,9 @@
       "Event": {"type": "object", "properties": {"id": {"type": "string"}, "aggregate_id": {"type": "string"}, "type": {"type": "string"}, "occurred_at": {"type": "string", "format": "date-time"}, "aggregate_version": {"type": "integer", "format": "int64"}, "correlation_id": {"type": "string"}, "causation_id": {"type": "string"}}},
       "Timeline": {"type": "object", "properties": {"payment": {"$ref": "#/components/schemas/Payment"}, "events": {"type": "array", "items": {"$ref": "#/components/schemas/Event"}}}},
       "Diagnostics": {"allOf": [{"$ref": "#/components/schemas/Timeline"}, {"type": "object", "properties": {"current_time": {"type": "string", "format": "date-time"}, "providers": {"type": "array", "items": {"type": "string"}}}}]},
-      "Scenario": {"type": "object", "properties": {"id": {"type": "string"}, "provider": {"type": "object", "properties": {"id": {"type": "string"}}}, "initial_virtual_time": {"type": "string", "format": "date-time"}, "deterministic_configuration": {"type": "object", "properties": {"seed": {"type": "integer", "format": "int64"}}}, "initial_payments": {"type": "array", "items": {"$ref": "#/components/schemas/Payment"}}, "commands": {"type": "array", "items": {"type": "object"}}}}
+      "Scenario": {"type": "object", "required": ["id", "provider", "initial_virtual_time", "deterministic_configuration", "initial_payments", "commands"], "additionalProperties": false, "properties": {"id": {"type": "string", "minLength": 1}, "provider": {"type": "object", "required": ["id"], "additionalProperties": false, "properties": {"id": {"type": "string", "minLength": 1}, "profile": {"type": "string"}}}, "initial_virtual_time": {"type": "string", "format": "date-time"}, "deterministic_configuration": {"type": "object", "required": ["seed"], "additionalProperties": false, "properties": {"seed": {"type": "integer", "format": "int64", "minimum": 0}}}, "initial_payments": {"type": "array", "items": {"$ref": "#/components/schemas/Payment"}}, "commands": {"type": "array", "items": {"$ref": "#/components/schemas/ScenarioCommand"}}}},
+      "ScenarioCommand": {"type": "object", "required": ["type"], "additionalProperties": false, "properties": {"type": {"type": "string"}, "payment_id": {"type": "string"}, "amount": {"type": "integer", "format": "int64"}, "currency": {"type": "string"}, "duration": {"type": "string"}, "operation_id": {"type": "string"}}},
+      "ScenarioExecution": {"type": "object", "required": ["scenario_id", "provider", "deterministic_configuration", "current_virtual_time", "payments", "async_operations"], "properties": {"scenario_id": {"type": "string"}, "provider": {"type": "object", "properties": {"id": {"type": "string"}, "profile": {"type": "string"}}}, "deterministic_configuration": {"type": "object", "properties": {"seed": {"type": "integer", "format": "int64"}}}, "current_virtual_time": {"type": "string", "format": "date-time"}, "payments": {"type": "array", "items": {"$ref": "#/components/schemas/Payment"}}, "async_operations": {"type": "array", "items": {"type": "object"}}}}
     },
     "responses": {
       "HealthAlive": {"description": "Process is alive.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}, "example": {"status": "alive"}}}},
@@ -113,6 +123,7 @@
       "Timeline": {"description": "Payment timeline.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Timeline"}}}},
       "Diagnostics": {"description": "Payment diagnostic snapshot.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Diagnostics"}}}},
       "Scenario": {"description": "Scenario inputs.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Scenario"}}}},
+      "ScenarioExecution": {"description": "Deterministic scenario execution result.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ScenarioExecution"}}}},
       "InvalidRequest": {"description": "Invalid request.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
       "UnsupportedMediaType": {"description": "Content-Type must be application/json.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
       "Unauthorized": {"description": "A valid admin bearer token is required.", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},

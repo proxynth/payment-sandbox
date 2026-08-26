@@ -27,6 +27,7 @@ import (
 	"proxynth/payment-sandbox/internal/provider/fake"
 	"proxynth/payment-sandbox/internal/provider/stripe"
 	replaymemory "proxynth/payment-sandbox/internal/replay/adapters/memory"
+	replayapplication "proxynth/payment-sandbox/internal/replay/application"
 	sagasqlite "proxynth/payment-sandbox/internal/saga/adapters/sqlite"
 	sagaapplication "proxynth/payment-sandbox/internal/saga/application"
 	sagadomain "proxynth/payment-sandbox/internal/saga/domain"
@@ -121,6 +122,14 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 			return nil, fmt.Errorf("register %s provider: %w", name, err)
 		}
 	}
+	replayEngine, err := replayapplication.NewReplayEngine(replayapplication.NewRunner(providers))
+	if err != nil {
+		return nil, fmt.Errorf("create replay engine: %w", err)
+	}
+	scenarioService, err := replayapplication.NewScenarioService(scenarios, replayEngine)
+	if err != nil {
+		return nil, fmt.Errorf("create scenario service: %w", err)
+	}
 	jobRepository := schedulersqlite.NewRepository(database)
 	sagaRepository := sagasqlite.NewRepository(database)
 	sagaPublisher := sagasqlite.NewPublisher(jobRepository)
@@ -174,7 +183,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create administration handler: %w", err)
 	}
-	scenarioHandler, err := administrationhttp.NewScenarioHandler(scenarios)
+	scenarioHandler, err := administrationhttp.NewScenarioHandlerWithService(scenarios, scenarioService)
 	if err != nil {
 		return nil, fmt.Errorf("create scenario handler: %w", err)
 	}
