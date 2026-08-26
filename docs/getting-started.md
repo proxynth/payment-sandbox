@@ -35,15 +35,24 @@ Copy the tracked example configuration:
 cp .env.example .env
 ```
 
-The application reads configuration from exported environment variables. It
-does not load `.env` automatically, so load it into the current shell when
-using the example file:
+The application reads configuration from exported environment variables. The
+`make run` target loads `.env` by default when it exists. Choose another file
+for a specific local environment with `make run ENV_FILE=.env.test`. To load
+the same configuration in the current shell for other commands, use:
 
 ```bash
 set -a
 source .env
 set +a
 ```
+
+The source checkout can also be started with the binary option directly:
+
+```bash
+go run ./cmd/payment-sandbox --env-file .env
+```
+
+The dotenv file never overrides a variable already exported in the shell.
 
 The available settings are:
 

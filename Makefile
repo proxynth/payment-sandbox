@@ -1,5 +1,6 @@
 APP_NAME := payment-sandbox
 CMD_PATH := ./cmd/payment-sandbox
+ENV_FILE ?= .env
 COVERAGE_FILE := coverage.out
 
 .PHONY: help build run test test-race coverage fmt lint tidy check clean repomix
@@ -11,7 +12,11 @@ build: ## Build the application
 	go build -o bin/$(APP_NAME) $(CMD_PATH)
 
 run: ## Run the application
-	go run $(CMD_PATH)
+	@if [ -f "$(ENV_FILE)" ]; then \
+		exec go run $(CMD_PATH) --env-file "$(ENV_FILE)"; \
+	else \
+		exec go run $(CMD_PATH); \
+	fi
 
 test: ## Run tests
 	go test ./...

@@ -108,6 +108,11 @@ make run
 ```
 
 The application loads configuration from environment variables during startup.
+When running from a source checkout, `make run` loads `.env` by default if it
+exists. Choose another file with `make run ENV_FILE=.env.test`. A published
+binary can load a file explicitly with `payment-sandbox --env-file .env.demo`,
+or run without a dotenv file when its variables are provided by the
+environment.
 
 ### Try it from source
 

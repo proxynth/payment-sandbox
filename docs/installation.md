@@ -102,8 +102,17 @@ The available variables are:
 | `PAYMENT_SANDBOX_DATABASE_PATH` | `payment-sandbox.db` | SQLite database path |
 | `PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT` | `5s` | SQLite busy timeout |
 
-The application does not load `.env` automatically. Export the variables as
-shown above, or set them directly in the shell that starts the binary.
+The published binary does not load `.env` implicitly. Export the variables as
+shown above, or set them directly in the shell that starts the binary. If you
+want the binary to load a dotenv file explicitly, pass its path:
+
+```bash
+payment-sandbox --env-file .env
+```
+
+The repository's `make run` target uses `.env` by default for local source
+checkouts; choose another file with `make run ENV_FILE=.env.test`. A dotenv
+file never overrides a variable already exported in the shell.
 
 The admin token has no default. Replace the placeholder in `.env` with a
 unique high-entropy secret. Send it as `Authorization: Bearer <token>` when
