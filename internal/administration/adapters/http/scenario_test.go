@@ -18,10 +18,7 @@ import (
 
 func TestScenarioHandlerReturnsStructuredScenario(t *testing.T) {
 	scenario := httpScenario(t)
-	handler, err := NewScenarioHandler(&httpScenarioRepository{scenario: scenario})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{scenario: scenario})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -40,10 +37,7 @@ func TestScenarioHandlerReturnsStructuredScenario(t *testing.T) {
 }
 
 func TestScenarioHandlerMapsMissingScenario(t *testing.T) {
-	handler, err := NewScenarioHandler(&httpScenarioRepository{})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -54,10 +48,7 @@ func TestScenarioHandlerMapsMissingScenario(t *testing.T) {
 }
 
 func TestScenarioHandlerRejectsMalformedPath(t *testing.T) {
-	handler, err := NewScenarioHandler(&httpScenarioRepository{})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -68,10 +59,7 @@ func TestScenarioHandlerRejectsMalformedPath(t *testing.T) {
 }
 
 func TestScenarioHandlerMapsRepositoryError(t *testing.T) {
-	handler, err := NewScenarioHandler(&httpScenarioRepository{err: errors.New("storage unavailable")})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{err: errors.New("storage unavailable")})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -91,9 +79,9 @@ func TestScenarioHandlerCreatesAndExecutesScenario(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewScenarioService() error = %v", err)
 	}
-	handler, err := NewScenarioHandlerWithService(repository, service)
+	handler, err := NewScenarioHandler(repository, service)
 	if err != nil {
-		t.Fatalf("NewScenarioHandlerWithService() error = %v", err)
+		t.Fatalf("NewScenarioHandler() error = %v", err)
 	}
 	server := scenarioServer(t, handler)
 	body := `{"id":"scenario-http","provider":{"id":"fake"},"initial_virtual_time":"2026-08-26T12:00:00Z","deterministic_configuration":{"seed":42},"initial_payments":[],"commands":[]}`
@@ -145,6 +133,23 @@ func scenarioServer(t *testing.T, handler *ScenarioHandler) *api.Server {
 		t.Fatalf("Register() error = %v", err)
 	}
 	return server
+}
+
+func newScenarioHandler(t *testing.T, repository *httpScenarioRepository) *ScenarioHandler {
+	t.Helper()
+	engine, err := replayapplication.NewReplayEngine(&httpScenarioRunner{})
+	if err != nil {
+		t.Fatalf("NewReplayEngine() error = %v", err)
+	}
+	service, err := replayapplication.NewScenarioService(repository, engine)
+	if err != nil {
+		t.Fatalf("NewScenarioService() error = %v", err)
+	}
+	handler, err := NewScenarioHandler(repository, service)
+	if err != nil {
+		t.Fatalf("NewScenarioHandler() error = %v", err)
+	}
+	return handler
 }
 
 func httpScenario(t *testing.T) *replaydomain.Scenario {

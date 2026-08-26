@@ -24,25 +24,16 @@ type ScenarioHandler struct {
 	service    *replayapplication.ScenarioService
 }
 
-func NewScenarioHandler(repository application.ScenarioRepository) (*ScenarioHandler, error) {
+func NewScenarioHandler(repository application.ScenarioRepository, service *replayapplication.ScenarioService) (*ScenarioHandler, error) {
 	inspection, err := application.NewScenarioInspection(repository)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ScenarioHandler{inspection: inspection}, nil
-}
-
-func NewScenarioHandlerWithService(repository application.ScenarioRepository, service *replayapplication.ScenarioService) (*ScenarioHandler, error) {
-	handler, err := NewScenarioHandler(repository)
 	if err != nil {
 		return nil, err
 	}
 	if service == nil {
 		return nil, errors.New("scenario service is nil")
 	}
-	handler.service = service
-	return handler, nil
+
+	return &ScenarioHandler{inspection: inspection, service: service}, nil
 }
 
 func (h *ScenarioHandler) Register(server *api.Server, token string) error {

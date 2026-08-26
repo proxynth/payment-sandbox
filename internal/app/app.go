@@ -183,7 +183,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create administration handler: %w", err)
 	}
-	scenarioHandler, err := administrationhttp.NewScenarioHandlerWithService(scenarios, scenarioService)
+	scenarioHandler, err := administrationhttp.NewScenarioHandler(scenarios, scenarioService)
 	if err != nil {
 		return nil, fmt.Errorf("create scenario handler: %w", err)
 	}
