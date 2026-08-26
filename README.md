@@ -50,6 +50,8 @@ See [docs/architecture](docs/architecture).
 
 The provider model is described in the [provider guide](docs/providers.md).
 The replay workflow is described in the [scenario guide](docs/scenarios.md).
+The complete HTTP API is described in the [API guide](docs/api.md), with an
+[OpenAPI contract](docs/openapi.json) for tools and client generation.
 
 ## Example use cases
 
@@ -394,6 +396,8 @@ Do not use real payment credentials, cardholder data or production secrets.
 - [Architectural Decision Records](docs/architecture/decisions/)
 - [Getting Started guide](docs/getting-started.md)
 - [Installation and first-payment walkthrough](docs/installation.md#make-a-first-payment-request)
+- [HTTP API guide](docs/api.md)
+- [OpenAPI contract](docs/openapi.json)
 - [Provider guide](docs/providers.md)
 - [Scenario guide](docs/scenarios.md)
 

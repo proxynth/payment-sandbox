@@ -112,6 +112,9 @@ Once the server is running, use the
 [first-payment walkthrough](installation.md#make-a-first-payment-request) to
 exercise the same API flow as a published release.
 
+See the [HTTP API guide](api.md) for the complete route reference and the
+[OpenAPI contract](openapi.json) for machine-readable integration.
+
 ## Useful commands
 
 ```bash

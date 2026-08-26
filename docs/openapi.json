@@ -1,0 +1,121 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Payment Sandbox API",
+    "version": "1.0.0",
+    "description": "HTTP API for deterministic payment integration testing."
+  },
+  "servers": [{"url": "http://127.0.0.1:8080"}],
+  "tags": [
+    {"name": "Health"},
+    {"name": "Payments"},
+    {"name": "Webhooks"},
+    {"name": "Administration"}
+  ],
+  "paths": {
+    "/health/live": {
+      "get": {"tags": ["Health"], "summary": "Check liveness", "operationId": "getLiveness", "responses": {"200": {"$ref": "#/components/responses/HealthAlive"}}}
+    },
+    "/health/ready": {
+      "get": {"tags": ["Health"], "summary": "Check readiness", "operationId": "getReadiness", "responses": {"200": {"$ref": "#/components/responses/HealthReady"}, "503": {"$ref": "#/components/responses/NotReady"}}}
+    },
+    "/payments": {
+      "post": {
+        "tags": ["Payments"], "summary": "Create a payment", "operationId": "createPayment",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreatePaymentRequest"}, "example": {"id": "demo-payment", "amount": 1000, "currency": "EUR"}}}},
+        "responses": {"201": {"description": "Payment created.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Payment"}}}}, "400": {"$ref": "#/components/responses/InvalidRequest"}, "409": {"$ref": "#/components/responses/Conflict"}, "415": {"$ref": "#/components/responses/UnsupportedMediaType"}}
+      }
+    },
+    "/payments/{paymentId}": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "get": {"tags": ["Payments"], "summary": "Retrieve a payment", "operationId": "getPayment", "responses": {"200": {"$ref": "#/components/responses/Payment"}, "404": {"$ref": "#/components/responses/NotFound"}}}
+    },
+    "/payments/{paymentId}/authorize": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "post": {"tags": ["Payments"], "summary": "Authorize a payment", "operationId": "authorizePayment", "responses": {"200": {"$ref": "#/components/responses/Payment"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}}
+    },
+    "/payments/{paymentId}/capture": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "post": {"tags": ["Payments"], "summary": "Capture an amount", "operationId": "capturePayment", "requestBody": {"$ref": "#/components/requestBodies/Amount"}, "responses": {"200": {"$ref": "#/components/responses/Payment"}, "400": {"$ref": "#/components/responses/InvalidRequest"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "415": {"$ref": "#/components/responses/UnsupportedMediaType"}}}
+    },
+    "/payments/{paymentId}/cancel": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "post": {"tags": ["Payments"], "summary": "Cancel a payment", "operationId": "cancelPayment", "responses": {"200": {"$ref": "#/components/responses/Payment"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}}
+    },
+    "/payments/{paymentId}/refund": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "post": {"tags": ["Payments"], "summary": "Refund an amount", "operationId": "refundPayment", "requestBody": {"$ref": "#/components/requestBodies/Amount"}, "responses": {"200": {"$ref": "#/components/responses/Payment"}, "400": {"$ref": "#/components/responses/InvalidRequest"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "415": {"$ref": "#/components/responses/UnsupportedMediaType"}}}
+    },
+    "/webhook-endpoints": {
+      "get": {"tags": ["Webhooks"], "summary": "List webhook endpoints", "operationId": "listWebhookEndpoints", "responses": {"200": {"description": "Registered endpoints.", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/WebhookEndpoint"}}}}}}},
+      "post": {"tags": ["Webhooks"], "summary": "Register a webhook endpoint", "operationId": "registerWebhookEndpoint", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RegisterWebhookEndpointRequest"}, "example": {"id": "demo-client", "url": "http://127.0.0.1:9000/webhooks"}}}}, "responses": {"201": {"description": "Endpoint registered.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebhookEndpoint"}}}}, "400": {"$ref": "#/components/responses/InvalidRequest"}, "409": {"$ref": "#/components/responses/Conflict"}, "415": {"$ref": "#/components/responses/UnsupportedMediaType"}}}
+    },
+    "/webhook-endpoints/{endpointId}": {
+      "parameters": [{"$ref": "#/components/parameters/EndpointId"}],
+      "get": {"tags": ["Webhooks"], "summary": "Retrieve a webhook endpoint", "operationId": "getWebhookEndpoint", "responses": {"200": {"description": "Registered endpoint.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WebhookEndpoint"}}}}, "404": {"$ref": "#/components/responses/NotFound"}}}
+    },
+    "/admin/time": {
+      "get": {"tags": ["Administration"], "summary": "Read virtual time", "operationId": "getVirtualTime", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/Time"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    },
+    "/admin/time/advance": {
+      "post": {"tags": ["Administration"], "summary": "Advance virtual time", "operationId": "advanceVirtualTime", "security": [{"AdminBearerAuth": []}], "requestBody": {"$ref": "#/components/requestBodies/AdvanceTime"}, "responses": {"200": {"$ref": "#/components/responses/Time"}, "400": {"$ref": "#/components/responses/InvalidRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "409": {"$ref": "#/components/responses/Conflict"}, "415": {"$ref": "#/components/responses/UnsupportedMediaType"}}}
+    },
+    "/admin/providers": {
+      "get": {"tags": ["Administration"], "summary": "List providers", "operationId": "listProviders", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"description": "Available providers.", "content": {"application/json": {"schema": {"type": "object", "required": ["providers"], "properties": {"providers": {"type": "array", "items": {"type": "string"}}}}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    },
+    "/admin/scenarios/{scenarioId}": {
+      "parameters": [{"$ref": "#/components/parameters/ScenarioId"}],
+      "get": {"tags": ["Administration"], "summary": "Inspect a scenario", "operationId": "getScenario", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/Scenario"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}
+    },
+    "/admin/payments/{paymentId}/timeline": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "get": {"tags": ["Administration"], "summary": "Read a payment timeline", "operationId": "getPaymentTimeline", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/Timeline"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}
+    },
+    "/admin/diagnostics/payments/{paymentId}": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "get": {"tags": ["Administration"], "summary": "Read payment diagnostics", "operationId": "getPaymentDiagnostics", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/Diagnostics"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}
+    }
+  },
+  "components": {
+    "securitySchemes": {"AdminBearerAuth": {"type": "http", "scheme": "bearer", "description": "The PAYMENT_SANDBOX_ADMIN_TOKEN value."}},
+    "parameters": {
+      "PaymentId": {"name": "paymentId", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}},
+      "EndpointId": {"name": "endpointId", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}},
+      "ScenarioId": {"name": "scenarioId", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}
+    },
+    "requestBodies": {
+      "Amount": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AmountRequest"}, "example": {"amount": 1000, "currency": "EUR"}}}},
+      "AdvanceTime": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AdvanceTimeRequest"}, "example": {"by": "1h"}}}}
+    },
+    "schemas": {
+      "ErrorResponse": {"type": "object", "required": ["error"], "properties": {"error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}}},
+      "Health": {"type": "object", "required": ["status"], "properties": {"status": {"type": "string"}}},
+      "Payment": {"type": "object", "required": ["id", "amount", "currency", "status", "authorized_amount", "captured_amount", "refunded_amount", "version"], "properties": {"id": {"type": "string"}, "amount": {"type": "integer", "format": "int64"}, "currency": {"type": "string"}, "status": {"type": "string"}, "authorized_amount": {"type": "integer", "format": "int64"}, "captured_amount": {"type": "integer", "format": "int64"}, "refunded_amount": {"type": "integer", "format": "int64"}, "version": {"type": "integer", "format": "int64"}}},
+      "CreatePaymentRequest": {"type": "object", "required": ["id", "amount", "currency"], "additionalProperties": false, "properties": {"id": {"type": "string", "minLength": 1}, "amount": {"type": "integer", "format": "int64", "minimum": 1}, "currency": {"type": "string", "minLength": 1}}},
+      "AmountRequest": {"type": "object", "required": ["amount", "currency"], "additionalProperties": false, "properties": {"amount": {"type": "integer", "format": "int64", "minimum": 1}, "currency": {"type": "string", "minLength": 1}}},
+      "RegisterWebhookEndpointRequest": {"type": "object", "required": ["id", "url"], "additionalProperties": false, "properties": {"id": {"type": "string", "minLength": 1}, "url": {"type": "string", "format": "uri", "pattern": "^https?://"}}},
+      "WebhookEndpoint": {"type": "object", "required": ["id", "url", "enabled"], "properties": {"id": {"type": "string"}, "url": {"type": "string", "format": "uri"}, "enabled": {"type": "boolean"}}},
+      "Time": {"type": "object", "required": ["current"], "properties": {"current": {"type": "string", "format": "date-time"}}},
+      "AdvanceTimeRequest": {"type": "object", "required": ["by"], "additionalProperties": false, "properties": {"by": {"type": "string", "description": "Positive Go duration such as 30m or 1h."}}},
+      "Event": {"type": "object", "properties": {"id": {"type": "string"}, "aggregate_id": {"type": "string"}, "type": {"type": "string"}, "occurred_at": {"type": "string", "format": "date-time"}, "aggregate_version": {"type": "integer", "format": "int64"}, "correlation_id": {"type": "string"}, "causation_id": {"type": "string"}}},
+      "Timeline": {"type": "object", "properties": {"payment": {"$ref": "#/components/schemas/Payment"}, "events": {"type": "array", "items": {"$ref": "#/components/schemas/Event"}}}},
+      "Diagnostics": {"allOf": [{"$ref": "#/components/schemas/Timeline"}, {"type": "object", "properties": {"current_time": {"type": "string", "format": "date-time"}, "providers": {"type": "array", "items": {"type": "string"}}}}]},
+      "Scenario": {"type": "object", "properties": {"id": {"type": "string"}, "provider": {"type": "object", "properties": {"id": {"type": "string"}}}, "initial_virtual_time": {"type": "string", "format": "date-time"}, "deterministic_configuration": {"type": "object", "properties": {"seed": {"type": "integer", "format": "int64"}}}, "initial_payments": {"type": "array", "items": {"$ref": "#/components/schemas/Payment"}}, "commands": {"type": "array", "items": {"type": "object"}}}}
+    },
+    "responses": {
+      "HealthAlive": {"description": "Process is alive.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}, "example": {"status": "alive"}}}},
+      "HealthReady": {"description": "API is ready.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}, "example": {"status": "ready"}}}},
+      "NotReady": {"description": "API is not ready.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}},
+      "Payment": {"description": "Payment response.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Payment"}}}},
+      "Time": {"description": "Virtual time response.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Time"}}}},
+      "Timeline": {"description": "Payment timeline.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Timeline"}}}},
+      "Diagnostics": {"description": "Payment diagnostic snapshot.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Diagnostics"}}}},
+      "Scenario": {"description": "Scenario inputs.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Scenario"}}}},
+      "InvalidRequest": {"description": "Invalid request.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+      "UnsupportedMediaType": {"description": "Content-Type must be application/json.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+      "Unauthorized": {"description": "A valid admin bearer token is required.", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+      "NotFound": {"description": "Requested resource was not found.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+      "Conflict": {"description": "Operation rejected by current state or data.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}}
+    }
+  }
+}
