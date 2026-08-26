@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/proxynth/payment-sandbox/compare/v1.2.1...v1.3.0) (2026-08-26)
+
+
+### Features
+
+* :twisted_rightwards_arrows: propagate event identifiers ([#96](https://github.com/proxynth/payment-sandbox/issues/96)) ([7e3d8da](https://github.com/proxynth/payment-sandbox/commit/7e3d8da5bad3a15574a59f4c9d4af2a1e7cb6cb4))
+
 ## [1.2.1](https://github.com/proxynth/payment-sandbox/compare/v1.2.0...v1.2.1) (2026-08-25)
 
 
