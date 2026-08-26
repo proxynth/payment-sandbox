@@ -7,6 +7,7 @@ import (
 	"time"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	"proxynth/payment-sandbox/internal/platform/observability"
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	"proxynth/payment-sandbox/internal/saga/domain"
 )
@@ -86,6 +87,8 @@ func (o *Orchestrator) Handle(ctx context.Context, message domain.Message, execu
 	if instance.CurrentStep != message.Step {
 		return nil
 	}
+	metadata := observability.Metadata{CorrelationID: message.CorrelationID, CausationID: message.ID}
+	ctx = observability.WithMetadata(ctx, metadata)
 	execution, err := executor.Execute(ctx, message)
 	if err != nil {
 		return err
@@ -99,7 +102,7 @@ func (o *Orchestrator) Handle(ctx context.Context, message domain.Message, execu
 			if err != nil {
 				return err
 			}
-			if err := o.publisher.Publish(ctx, domain.Message{ID: operation.ID, SagaID: message.SagaID, PaymentID: message.PaymentID, Step: message.Step, OperationID: operation.ID, Payload: payload, Seed: message.Seed, ScheduledAt: operation.ScheduledAt, VirtualAt: operation.ScheduledAt, Attempt: 1}); err != nil {
+			if err := o.publisher.Publish(ctx, domain.Message{ID: operation.ID, SagaID: message.SagaID, PaymentID: message.PaymentID, Step: message.Step, OperationID: operation.ID, Payload: payload, Seed: message.Seed, ScheduledAt: operation.ScheduledAt, VirtualAt: operation.ScheduledAt, Attempt: 1, CorrelationID: metadata.CorrelationID, CausationID: message.ID}); err != nil {
 				return err
 			}
 		}
@@ -132,11 +135,20 @@ func (o *Orchestrator) Handle(ctx context.Context, message domain.Message, execu
 }
 
 func (o *Orchestrator) publishCurrent(ctx context.Context, instance domain.Instance, at time.Time) error {
+	metadata := observability.MetadataFromContext(ctx)
+	if metadata.CorrelationID == "" {
+		var err error
+		metadata.CorrelationID, err = observability.NewCorrelationID()
+		if err != nil {
+			return err
+		}
+	}
 	return o.publisher.Publish(ctx, domain.Message{
 		ID:     string(instance.ID) + ":" + string(instance.CurrentStep) + ":" + itoa(instance.Version),
 		SagaID: instance.ID, PaymentID: instance.PaymentID, Step: instance.CurrentStep,
 		Payload: append([]byte(nil), instance.Payload...),
 		Seed:    instance.Seed, ScheduledAt: at, VirtualAt: at, Attempt: 1,
+		CorrelationID: metadata.CorrelationID, CausationID: metadata.CausationID,
 	})
 }
 

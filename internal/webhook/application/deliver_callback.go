@@ -16,13 +16,21 @@ const DeliveryJobType = "webhook.delivery"
 
 // DeliveryPayload is the scheduler payload for one outbound callback.
 type DeliveryPayload struct {
-	EndpointID webhookdomain.EndpointID `json:"endpoint_id"`
-	Body       json.RawMessage          `json:"body"`
+	EndpointID    webhookdomain.EndpointID `json:"endpoint_id"`
+	Body          json.RawMessage          `json:"body"`
+	CorrelationID string                   `json:"correlation_id,omitempty"`
+	CausationID   string                   `json:"causation_id,omitempty"`
 }
 
 // NewDeliveryPayload encodes a callback payload for a webhook delivery job.
-func NewDeliveryPayload(endpointID webhookdomain.EndpointID, body []byte) ([]byte, error) {
+func NewDeliveryPayload(endpointID webhookdomain.EndpointID, body []byte, metadata ...string) ([]byte, error) {
 	payload := DeliveryPayload{EndpointID: endpointID, Body: append(json.RawMessage(nil), body...)}
+	if len(metadata) > 0 {
+		payload.CorrelationID = metadata[0]
+	}
+	if len(metadata) > 1 {
+		payload.CausationID = metadata[1]
+	}
 	if err := validateDeliveryPayload(payload); err != nil {
 		return nil, err
 	}
@@ -78,6 +86,12 @@ func (d *OutboundCallback) Execute(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("%w: create request: %w", ErrCallbackDeliveryFailed, err)
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if delivery.CorrelationID != "" {
+		request.Header.Set("X-Correlation-ID", delivery.CorrelationID)
+	}
+	if delivery.CausationID != "" {
+		request.Header.Set("X-Causation-ID", delivery.CausationID)
+	}
 
 	response, err := d.client.Do(request)
 	if err != nil {

@@ -27,6 +27,13 @@ shape:
 {"error":{"code":"payment_not_found","message":"payment not found"}}
 ```
 
+Mutation requests may provide an `X-Correlation-ID` header to group all work
+caused by one client operation. When it is absent, the API generates one and
+returns it in the response. The value is propagated to business events,
+durable saga and webhook jobs, and outbound callbacks. `X-Causation-ID` is
+managed by the application for derived work and should not be supplied by the
+client.
+
 ## Health
 
 | Method | Route | Purpose |

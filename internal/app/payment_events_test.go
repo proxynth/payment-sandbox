@@ -8,6 +8,7 @@ import (
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 	"proxynth/payment-sandbox/internal/platform/clock"
+	"proxynth/payment-sandbox/internal/platform/observability"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 	webhookmemory "proxynth/payment-sandbox/internal/webhook/adapters/memory"
 	webhookapplication "proxynth/payment-sandbox/internal/webhook/application"
@@ -65,12 +66,16 @@ func TestPaymentEventPublisherRecordsEventAndSchedulesWebhook(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if err := publisher.Publish(context.Background(), payment, paymentdomain.EventPaymentCreated); err != nil {
+	ctx := observability.WithMetadata(context.Background(), observability.Metadata{CorrelationID: "request-1"})
+	if err := publisher.Publish(ctx, payment, paymentdomain.EventPaymentCreated); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 
 	if len(events.events) != 1 || events.events[0].Type() != paymentdomain.EventPaymentCreated {
 		t.Fatalf("events = %+v, want one payment.created event", events.events)
+	}
+	if events.events[0].CorrelationID() != "request-1" || events.events[0].CausationID() != "" {
+		t.Fatalf("event metadata = %q/%q", events.events[0].CorrelationID(), events.events[0].CausationID())
 	}
 	if len(jobs.jobs) != 1 || jobs.jobs[0].Type() != webhookapplication.DeliveryJobType {
 		t.Fatalf("jobs = %+v, want one webhook delivery job", jobs.jobs)
@@ -88,5 +93,8 @@ func TestPaymentEventPublisherRecordsEventAndSchedulesWebhook(t *testing.T) {
 	}
 	if body.PaymentID != payment.ID() || body.Type != paymentdomain.EventPaymentCreated || !body.OccurredAt.Equal(when) {
 		t.Fatalf("webhook body = %+v", body)
+	}
+	if body.CorrelationID != "request-1" || payload.CorrelationID != "request-1" {
+		t.Fatalf("webhook metadata = %q/%q", body.CorrelationID, payload.CorrelationID)
 	}
 }

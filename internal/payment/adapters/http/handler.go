@@ -11,6 +11,7 @@ import (
 	"proxynth/payment-sandbox/internal/api"
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	"proxynth/payment-sandbox/internal/platform/observability"
 )
 
 const paymentPathPrefix = "/payments/"
@@ -76,6 +77,11 @@ type paymentResponse struct {
 }
 
 func (h *Handler) createPayment(writer http.ResponseWriter, request *http.Request) {
+	var ok bool
+	request, ok = withRequestMetadata(writer, request)
+	if !ok {
+		return
+	}
 	var input createPaymentRequest
 	if !decodeJSON(writer, request, &input) {
 		return
@@ -96,6 +102,11 @@ func (h *Handler) createPayment(writer http.ResponseWriter, request *http.Reques
 }
 
 func (h *Handler) getPayment(writer http.ResponseWriter, request *http.Request) {
+	var ok bool
+	request, ok = withRequestMetadata(writer, request)
+	if !ok {
+		return
+	}
 	id, ok := paymentID(request.URL.Path)
 	if !ok {
 		api.WriteError(writer, http.StatusNotFound, "not_found", "payment route not found")
@@ -112,6 +123,11 @@ func (h *Handler) getPayment(writer http.ResponseWriter, request *http.Request) 
 }
 
 func (h *Handler) command(writer http.ResponseWriter, request *http.Request) {
+	var ok bool
+	request, ok = withRequestMetadata(writer, request)
+	if !ok {
+		return
+	}
 	parts := strings.Split(strings.TrimPrefix(request.URL.Path, paymentPathPrefix), "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		api.WriteError(writer, http.StatusNotFound, "not_found", "payment route not found")
@@ -156,6 +172,24 @@ func (h *Handler) command(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	api.WriteJSON(writer, http.StatusOK, newPaymentResponse(payment))
+}
+
+func withRequestMetadata(writer http.ResponseWriter, request *http.Request) (*http.Request, bool) {
+	correlationID := strings.TrimSpace(request.Header.Get("X-Correlation-ID"))
+	if correlationID == "" {
+		var err error
+		correlationID, err = observability.NewCorrelationID()
+		if err != nil {
+			api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
+			return request, false
+		}
+	}
+	if len(correlationID) > 128 || strings.IndexFunc(correlationID, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		api.WriteError(writer, http.StatusBadRequest, "invalid_request", "X-Correlation-ID must be a printable value of at most 128 characters")
+		return request, false
+	}
+	writer.Header().Set("X-Correlation-ID", correlationID)
+	return request.WithContext(observability.WithMetadata(request.Context(), observability.Metadata{CorrelationID: correlationID})), true
 }
 
 func decodeJSON(writer http.ResponseWriter, request *http.Request, destination any) bool {
