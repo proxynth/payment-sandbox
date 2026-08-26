@@ -13,9 +13,9 @@ build: ## Build the application
 
 run: ## Run the application
 	@if [ -f "$(ENV_FILE)" ]; then \
-		exec go run $(CMD_PATH) --env-file "$(ENV_FILE)"; \
+		exec air -c .air.toml -- --env-file "$(ENV_FILE)"; \
 	else \
-		exec go run $(CMD_PATH); \
+		exec air -c .air.toml; \
 	fi
 
 test: ## Run tests
