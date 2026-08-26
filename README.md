@@ -29,7 +29,7 @@ Payment Sandbox aims to provide:
 * observable execution timelines;
 * a local-first and CI-friendly developer experience.
 
-## Architecture
+## Architecture overview
 
 Payment Sandbox is designed as a deterministic payment simulation platform.
 
@@ -103,6 +103,32 @@ make run
 ```
 
 The application loads configuration from environment variables during startup.
+
+### Try it in five minutes
+
+Start the sandbox from the repository root:
+
+```bash
+make run
+```
+
+In another terminal, check that it is ready, create a payment and authorize it:
+
+```bash
+curl http://127.0.0.1:8080/health/ready
+
+curl -X POST http://127.0.0.1:8080/payments \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"demo-payment","amount":1000,"currency":"EUR"}'
+
+curl -X POST http://127.0.0.1:8080/payments/demo-payment/authorize
+curl http://127.0.0.1:8080/payments/demo-payment
+```
+
+This demonstrates the basic payment lifecycle without requiring a provider
+account or a separate application. Continue with the
+[complete installation and first-payment walkthrough](docs/installation.md#make-a-first-payment-request)
+to explore webhooks and the local database.
 
 ### Configuration
 
@@ -227,19 +253,18 @@ The initial scope is intentionally limited to:
 
 Future versions may introduce additional payment methods, disputes and subscriptions.
 
-## Planned architecture
+## Architecture
 
-Payment Sandbox is designed as a modular monolith.
+Payment Sandbox is implemented as a modular monolith. The current runtime is
+organized around these modules:
 
-The main modules are expected to include:
-
-* Payment;
-* Simulation;
-* Webhook;
-* Idempotency;
-* Scheduler;
-* Administration;
-* Observability.
+* Payment and its state machine;
+* Provider profiles and deterministic execution;
+* Durable scheduling and asynchronous work;
+* Saga orchestration;
+* Webhook registration and delivery;
+* Scenario replay and diagnostics;
+* Administration and platform concerns.
 
 External concerns such as persistence, clocks, random generation and outbound HTTP delivery are isolated behind explicit architectural boundaries when substitution provides real value.
 
@@ -349,9 +374,14 @@ Do not use real payment credentials, cardholder data or production secrets.
 
 ## Further reading
 
-- Architecture overview
-- ADR Index
-- Design Principles
+- [Architecture overview](docs/architecture/README.md)
+- [Architecture diagrams](docs/architecture/diagrams.md)
+- [Architecture principles](docs/architecture/principles.md)
+- [Architectural Decision Records](docs/architecture/decisions/)
+- [Getting Started guide](docs/getting-started.md)
+- [Installation and first-payment walkthrough](docs/installation.md#make-a-first-payment-request)
+- [Provider guide](docs/providers.md)
+- [Scenario guide](docs/scenarios.md)
 
 ## Contributing
 
