@@ -61,6 +61,28 @@ func TestOutboundCallbackPropagatesContext(t *testing.T) {
 	}
 }
 
+func TestOutboundCallbackPropagatesEventMetadata(t *testing.T) {
+	endpoint, _ := webhookdomain.NewEndpoint("endpoint-1", "https://example.test/hooks")
+	client := &callbackClientFake{response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(nil))}}
+	delivery, err := NewOutboundCallback(&callbackRepositoryFake{endpoint: endpoint}, client)
+	if err != nil {
+		t.Fatalf("NewOutboundCallback() error = %v", err)
+	}
+	payload, err := NewDeliveryPayload(endpoint.ID(), []byte(`{}`), "request-1", "event-0")
+	if err != nil {
+		t.Fatalf("NewDeliveryPayload() error = %v", err)
+	}
+	if err := delivery.Execute(context.Background(), payload); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := client.request.Header.Get("X-Correlation-ID"); got != "request-1" {
+		t.Fatalf("correlation header = %q", got)
+	}
+	if got := client.request.Header.Get("X-Causation-ID"); got != "event-0" {
+		t.Fatalf("causation header = %q", got)
+	}
+}
+
 func TestOutboundCallbackRejectsInvalidPayloadBeforeHTTP(t *testing.T) {
 	client := &callbackClientFake{response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(nil))}}
 	delivery, err := NewOutboundCallback(&callbackRepositoryFake{}, client)

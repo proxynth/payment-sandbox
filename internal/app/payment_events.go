@@ -10,6 +10,7 @@ import (
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 	"proxynth/payment-sandbox/internal/platform/clock"
+	"proxynth/payment-sandbox/internal/platform/observability"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 	webhookapplication "proxynth/payment-sandbox/internal/webhook/application"
 	webhookdomain "proxynth/payment-sandbox/internal/webhook/domain"
@@ -45,7 +46,27 @@ func (p *paymentEventPublisher) Publish(ctx context.Context, payment *paymentdom
 
 	at := p.clock.Now().UTC()
 	eventID := paymentdomain.EventID(fmt.Sprintf("%s:%s:%d", payment.ID(), eventType, payment.Version()))
-	event, err := paymentdomain.NewBusinessEvent(eventID, payment.ID(), eventType, at, payment.Version(), "", "")
+	var err error
+	metadata := observability.MetadataFromContext(ctx)
+	if metadata.CorrelationID == "" {
+		metadata.CorrelationID, err = observability.NewCorrelationID()
+		if err != nil {
+			return err
+		}
+	}
+	previous, err := p.events.ListByAggregate(ctx, payment.ID())
+	if err != nil {
+		return err
+	}
+	causationID := paymentdomain.EventID("")
+	var causationVersion uint64
+	for _, candidate := range previous {
+		if candidate.AggregateVersion() < payment.Version() && candidate.AggregateVersion() > causationVersion {
+			causationID = candidate.ID()
+			causationVersion = candidate.AggregateVersion()
+		}
+	}
+	event, err := paymentdomain.NewBusinessEvent(eventID, payment.ID(), eventType, at, payment.Version(), metadata.CorrelationID, causationID)
 	if err != nil {
 		return err
 	}
@@ -61,6 +82,7 @@ func (p *paymentEventPublisher) Publish(ctx context.Context, payment *paymentdom
 	body, err := json.Marshal(paymentWebhookEvent{
 		ID: event.ID(), Type: event.Type(), PaymentID: payment.ID(), Amount: payment.Amount().Amount(),
 		Currency: payment.Amount().Currency(), Status: payment.Status(), Version: payment.Version(), OccurredAt: at,
+		CorrelationID: event.CorrelationID(), CausationID: event.CausationID(),
 	})
 	if err != nil {
 		return fmt.Errorf("encode payment webhook event: %w", err)
@@ -84,7 +106,7 @@ func (p *paymentEventPublisher) scheduleDelivery(
 	body []byte,
 	at time.Time,
 ) error {
-	payload, err := webhookapplication.NewDeliveryPayload(endpoint.ID(), body)
+	payload, err := webhookapplication.NewDeliveryPayload(endpoint.ID(), body, event.CorrelationID(), string(event.CausationID()))
 	if err != nil {
 		return err
 	}
@@ -100,12 +122,14 @@ func (p *paymentEventPublisher) scheduleDelivery(
 }
 
 type paymentWebhookEvent struct {
-	ID         paymentdomain.EventID   `json:"id"`
-	Type       paymentdomain.EventType `json:"type"`
-	PaymentID  paymentdomain.ID        `json:"payment_id"`
-	Amount     int64                   `json:"amount"`
-	Currency   paymentdomain.Currency  `json:"currency"`
-	Status     paymentdomain.Status    `json:"status"`
-	Version    uint64                  `json:"version"`
-	OccurredAt time.Time               `json:"occurred_at"`
+	ID            paymentdomain.EventID   `json:"id"`
+	Type          paymentdomain.EventType `json:"type"`
+	PaymentID     paymentdomain.ID        `json:"payment_id"`
+	Amount        int64                   `json:"amount"`
+	Currency      paymentdomain.Currency  `json:"currency"`
+	Status        paymentdomain.Status    `json:"status"`
+	Version       uint64                  `json:"version"`
+	OccurredAt    time.Time               `json:"occurred_at"`
+	CorrelationID string                  `json:"correlation_id"`
+	CausationID   paymentdomain.EventID   `json:"causation_id"`
 }

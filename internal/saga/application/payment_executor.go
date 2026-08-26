@@ -8,6 +8,7 @@ import (
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 	"proxynth/payment-sandbox/internal/platform/clock"
+	"proxynth/payment-sandbox/internal/platform/observability"
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	sagadoamin "proxynth/payment-sandbox/internal/saga/domain"
 )
@@ -34,6 +35,7 @@ func NewPaymentExecutorWithPublisher(payments paymentapplication.Repository, pro
 }
 
 func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Message) (Execution, error) {
+	ctx = observability.WithMetadata(ctx, observability.Metadata{CorrelationID: message.CorrelationID, CausationID: message.CausationID})
 	payment, err := e.payments.FindByID(ctx, message.PaymentID)
 	if err != nil {
 		return Execution{}, err

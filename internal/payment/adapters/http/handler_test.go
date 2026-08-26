@@ -83,6 +83,37 @@ func TestHandler_PropagatesRequestContext(t *testing.T) {
 	}
 }
 
+func TestHandler_GeneratesAndReturnsCorrelationID(t *testing.T) {
+	server := newTestServer(t, newTestRepository())
+	recorder := doJSON(t, server, http.MethodPost, "/payments", `{"id":"payment-1","amount":100,"currency":"EUR"}`)
+	if recorder.Header().Get("X-Correlation-ID") == "" {
+		t.Fatal("X-Correlation-ID response header is empty")
+	}
+}
+
+func TestHandler_PreservesCorrelationID(t *testing.T) {
+	server := newTestServer(t, newTestRepository())
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/payments", strings.NewReader(`{"id":"payment-1","amount":100,"currency":"EUR"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Correlation-ID", "request-1")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+	assertStatus(t, recorder, http.StatusCreated)
+	if got := recorder.Header().Get("X-Correlation-ID"); got != "request-1" {
+		t.Fatalf("X-Correlation-ID = %q, want request-1", got)
+	}
+}
+
+func TestHandler_RejectsInvalidCorrelationID(t *testing.T) {
+	server := newTestServer(t, newTestRepository())
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/payments", strings.NewReader(`{"id":"payment-1","amount":100,"currency":"EUR"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Correlation-ID", strings.Repeat("x", 129))
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+	assertStatus(t, recorder, http.StatusBadRequest)
+}
+
 func TestNewHandler_RejectsNilRepository(t *testing.T) {
 	if _, err := NewHandler(nil); !errors.Is(err, ErrNilRepository) {
 		t.Fatalf("NewHandler() error = %v, want %v", err, ErrNilRepository)

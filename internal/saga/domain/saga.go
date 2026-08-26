@@ -36,16 +36,18 @@ var (
 )
 
 type Message struct {
-	ID          string
-	SagaID      ID
-	PaymentID   paymentdomain.ID
-	Step        Step
-	OperationID string
-	Payload     []byte
-	Seed        uint64
-	ScheduledAt time.Time
-	VirtualAt   time.Time
-	Attempt     uint64
+	ID            string
+	SagaID        ID
+	PaymentID     paymentdomain.ID
+	Step          Step
+	OperationID   string
+	Payload       []byte
+	Seed          uint64
+	ScheduledAt   time.Time
+	VirtualAt     time.Time
+	Attempt       uint64
+	CorrelationID string
+	CausationID   string
 }
 
 func (m Message) Validate() error {
