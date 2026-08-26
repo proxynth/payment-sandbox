@@ -11,6 +11,13 @@ Install the following tools:
 - GNU Make;
 - Git;
 - `golangci-lint`, required by `make fmt` and `make check`.
+- Air `v1.61.7`, used by `make run` for automatic reloads.
+
+Install Air with:
+
+```bash
+go install github.com/air-verse/air@v1.61.7
+```
 
 Check the Go version before starting:
 
@@ -36,7 +43,8 @@ cp .env.example .env
 ```
 
 The application reads configuration from exported environment variables. The
-`make run` target loads `.env` by default when it exists. Choose another file
+`make run` target loads `.env` by default when it exists and reloads the server
+when Go source, migration or environment files change. Choose another file
 for a specific local environment with `make run ENV_FILE=.env.test`. To load
 the same configuration in the current shell for other commands, use:
 
