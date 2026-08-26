@@ -11,7 +11,9 @@ build: ## Build the application
 	go build -o bin/$(APP_NAME) $(CMD_PATH)
 
 run: ## Run the application
-	go run $(CMD_PATH)
+	@set -a; \
+	if [ -f .env ]; then . ./.env; fi; \
+	exec go run $(CMD_PATH)
 
 test: ## Run tests
 	go test ./...

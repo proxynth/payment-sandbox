@@ -35,9 +35,9 @@ Copy the tracked example configuration:
 cp .env.example .env
 ```
 
-The application reads configuration from exported environment variables. It
-does not load `.env` automatically, so load it into the current shell when
-using the example file:
+The application reads configuration from exported environment variables. The
+`make run` target loads `.env` automatically when it exists. To load the same
+configuration in the current shell for other commands, use:
 
 ```bash
 set -a

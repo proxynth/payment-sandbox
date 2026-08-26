@@ -102,8 +102,10 @@ The available variables are:
 | `PAYMENT_SANDBOX_DATABASE_PATH` | `payment-sandbox.db` | SQLite database path |
 | `PAYMENT_SANDBOX_DATABASE_BUSY_TIMEOUT` | `5s` | SQLite busy timeout |
 
-The application does not load `.env` automatically. Export the variables as
-shown above, or set them directly in the shell that starts the binary.
+The published binary does not load `.env` automatically. Export the variables
+as shown above, or set them directly in the shell that starts the binary. The
+repository's `make run` target provides a convenience loader for local source
+checkouts.
 
 The admin token has no default. Replace the placeholder in `.env` with a
 unique high-entropy secret. Send it as `Authorization: Bearer <token>` when

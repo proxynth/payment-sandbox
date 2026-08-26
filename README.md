@@ -108,6 +108,9 @@ make run
 ```
 
 The application loads configuration from environment variables during startup.
+When running from a source checkout, `make run` automatically loads `.env` if
+it exists. Published binaries require the variables to be exported by the
+shell that starts them.
 
 ### Try it from source
 
