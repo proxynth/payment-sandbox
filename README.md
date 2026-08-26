@@ -69,11 +69,16 @@ Payment Sandbox can be used to test situations such as:
 
 ## Development
 
-To install and run a published release without cloning the repository or
-installing Go, start with the [user installation guide](docs/installation.md).
+Choose the path that matches your goal:
 
-Start with the [Getting Started guide](docs/getting-started.md) for a clean
-checkout, environment setup and the local validation workflow.
+* **Use Payment Sandbox:** follow the [user installation guide](docs/installation.md)
+  to download the latest release without cloning the repository or installing
+  Go. This is the recommended path for trying the product.
+* **Explore or contribute to the code:** follow the [Getting Started
+  guide](docs/getting-started.md) to clone, configure and validate a source
+  checkout.
+
+Both paths lead to the same HTTP API and first-payment walkthrough.
 
 See the [Contributing guide](CONTRIBUTING.md) for module boundaries, testing,
 commits and pull requests.
@@ -104,9 +109,9 @@ make run
 
 The application loads configuration from environment variables during startup.
 
-### Try it in five minutes
+### Try it from source
 
-Start the sandbox from the repository root:
+If you have cloned the repository, start the sandbox from its root:
 
 ```bash
 make run
@@ -129,6 +134,10 @@ This demonstrates the basic payment lifecycle without requiring a provider
 account or a separate application. Continue with the
 [complete installation and first-payment walkthrough](docs/installation.md#make-a-first-payment-request)
 to explore webhooks and the local database.
+
+If you are using a published binary, follow the same scenario from the
+[release installation guide](docs/installation.md#make-a-first-payment-request)
+after downloading and starting the latest release.
 
 ### Configuration
 

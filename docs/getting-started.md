@@ -99,6 +99,10 @@ This starts the configured HTTP server and keeps the process running until you
 stop it with `Ctrl+C`. For installing a published release without a repository
 checkout or Go, use the [user installation guide](installation.md) instead.
 
+Once the server is running, use the
+[first-payment walkthrough](installation.md#make-a-first-payment-request) to
+exercise the same API flow as a published release.
+
 ## Useful commands
 
 ```bash
