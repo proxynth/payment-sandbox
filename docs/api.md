@@ -121,9 +121,17 @@ worker process durable work afterwards.
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `GET` | `/admin/providers` | List registered provider identifiers. |
+| `POST` | `/admin/scenarios` | Validate and store a scenario definition. |
 | `GET` | `/admin/scenarios/{id}` | Inspect provider, seed, initial state and commands. |
+| `POST` | `/admin/scenarios/{id}/execute` | Execute a stored scenario through deterministic replay. |
+
 | `GET` | `/admin/payments/{id}/timeline` | Read payment state and immutable business events. |
 | `GET` | `/admin/diagnostics/payments/{id}` | Read state, events, virtual time and providers. |
+
+Scenario creation is immutable: execution produces a result and does not
+modify the stored definition or the live payment database. The request uses
+the same scenario inputs as the replay model (`provider`, `initial_virtual_time`,
+`deterministic_configuration`, `initial_payments` and ordered `commands`).
 
 All inspection views are read-only. Scenario inspection does not execute the
 scenario. Timeline and diagnostics explain simulator behaviour without access

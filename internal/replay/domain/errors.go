@@ -10,5 +10,6 @@ var (
 	ErrInvalidCommand               = errors.New("invalid scenario command")
 	ErrInvalidCommandType           = errors.New("invalid scenario command type")
 	ErrInvalidCommandPaymentID      = errors.New("invalid scenario command payment id")
+	ErrScenarioAlreadyExists        = errors.New("scenario already exists")
 	ErrInvalidCommandAmount         = errors.New("invalid scenario command amount")
 )

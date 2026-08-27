@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,15 +12,13 @@ import (
 
 	"proxynth/payment-sandbox/internal/api"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	replayapplication "proxynth/payment-sandbox/internal/replay/application"
 	replaydomain "proxynth/payment-sandbox/internal/replay/domain"
 )
 
 func TestScenarioHandlerReturnsStructuredScenario(t *testing.T) {
 	scenario := httpScenario(t)
-	handler, err := NewScenarioHandler(&httpScenarioRepository{scenario: scenario})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{scenario: scenario})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -38,10 +37,7 @@ func TestScenarioHandlerReturnsStructuredScenario(t *testing.T) {
 }
 
 func TestScenarioHandlerMapsMissingScenario(t *testing.T) {
-	handler, err := NewScenarioHandler(&httpScenarioRepository{})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -52,10 +48,7 @@ func TestScenarioHandlerMapsMissingScenario(t *testing.T) {
 }
 
 func TestScenarioHandlerRejectsMalformedPath(t *testing.T) {
-	handler, err := NewScenarioHandler(&httpScenarioRepository{})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -66,10 +59,7 @@ func TestScenarioHandlerRejectsMalformedPath(t *testing.T) {
 }
 
 func TestScenarioHandlerMapsRepositoryError(t *testing.T) {
-	handler, err := NewScenarioHandler(&httpScenarioRepository{err: errors.New("storage unavailable")})
-	if err != nil {
-		t.Fatalf("NewScenarioHandler() error = %v", err)
-	}
+	handler := newScenarioHandler(t, &httpScenarioRepository{err: errors.New("storage unavailable")})
 	server := scenarioServer(t, handler)
 
 	response := httptest.NewRecorder()
@@ -79,13 +69,58 @@ func TestScenarioHandlerMapsRepositoryError(t *testing.T) {
 	}
 }
 
+func TestScenarioHandlerCreatesAndExecutesScenario(t *testing.T) {
+	repository := &httpScenarioRepository{}
+	engine, err := replayapplication.NewReplayEngine(&httpScenarioRunner{result: replayapplication.Result{ScenarioID: "scenario-http", Provider: replaydomain.ProviderConfiguration{ID: "fake"}, CurrentVirtualTime: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)}})
+	if err != nil {
+		t.Fatalf("NewReplayEngine() error = %v", err)
+	}
+	service, err := replayapplication.NewScenarioService(repository, engine)
+	if err != nil {
+		t.Fatalf("NewScenarioService() error = %v", err)
+	}
+	handler, err := NewScenarioHandler(repository, service)
+	if err != nil {
+		t.Fatalf("NewScenarioHandler() error = %v", err)
+	}
+	server := scenarioServer(t, handler)
+	body := `{"id":"scenario-http","provider":{"id":"fake"},"initial_virtual_time":"2026-08-26T12:00:00Z","deterministic_configuration":{"seed":42},"initial_payments":[],"commands":[]}`
+	create := httptest.NewRecorder()
+	request := adminRequest(http.MethodPost, "/admin/scenarios")
+	request.Body = io.NopCloser(strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	server.ServeHTTP(create, request)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d: %s", create.Code, create.Body.String())
+	}
+	execute := httptest.NewRecorder()
+	server.ServeHTTP(execute, adminRequest(http.MethodPost, "/admin/scenarios/scenario-http/execute"))
+	if execute.Code != http.StatusOK || !strings.Contains(execute.Body.String(), `"scenario_id":"scenario-http"`) {
+		t.Fatalf("execute = %d: %s", execute.Code, execute.Body.String())
+	}
+}
+
 type httpScenarioRepository struct {
 	scenario *replaydomain.Scenario
 	err      error
 }
 
+func (r *httpScenarioRepository) Save(_ context.Context, scenario *replaydomain.Scenario) error {
+	if r.scenario != nil {
+		return replaydomain.ErrScenarioAlreadyExists
+	}
+	r.scenario = scenario
+	return nil
+}
+
 func (r *httpScenarioRepository) FindByID(_ context.Context, _ replaydomain.ScenarioID) (*replaydomain.Scenario, error) {
 	return r.scenario, r.err
+}
+
+type httpScenarioRunner struct{ result replayapplication.Result }
+
+func (r *httpScenarioRunner) Run(context.Context, replaydomain.Scenario) (replayapplication.Result, error) {
+	return r.result, nil
 }
 
 func scenarioServer(t *testing.T, handler *ScenarioHandler) *api.Server {
@@ -98,6 +133,23 @@ func scenarioServer(t *testing.T, handler *ScenarioHandler) *api.Server {
 		t.Fatalf("Register() error = %v", err)
 	}
 	return server
+}
+
+func newScenarioHandler(t *testing.T, repository *httpScenarioRepository) *ScenarioHandler {
+	t.Helper()
+	engine, err := replayapplication.NewReplayEngine(&httpScenarioRunner{})
+	if err != nil {
+		t.Fatalf("NewReplayEngine() error = %v", err)
+	}
+	service, err := replayapplication.NewScenarioService(repository, engine)
+	if err != nil {
+		t.Fatalf("NewScenarioService() error = %v", err)
+	}
+	handler, err := NewScenarioHandler(repository, service)
+	if err != nil {
+		t.Fatalf("NewScenarioHandler() error = %v", err)
+	}
+	return handler
 }
 
 func httpScenario(t *testing.T) *replaydomain.Scenario {

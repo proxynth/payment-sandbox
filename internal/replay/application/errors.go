@@ -9,4 +9,5 @@ var (
 	ErrProviderOperationFailed = errors.New("provider operation failed")
 	ErrAsyncOperationNotFound  = errors.New("asynchronous operation not found")
 	ErrAsyncOperationNotDue    = errors.New("asynchronous operation is not due")
+	ErrScenarioNotFound        = errors.New("scenario not found")
 )
