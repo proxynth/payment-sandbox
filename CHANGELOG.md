@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/proxynth/payment-sandbox/compare/v1.3.0...v1.4.0) (2026-08-27)
+
+
+### Features
+
+* :sparkles: create and execute payment scenarios ([#99](https://github.com/proxynth/payment-sandbox/issues/99)) ([3052a55](https://github.com/proxynth/payment-sandbox/commit/3052a55e7366edf55f7917b5a2a80e811c82628c))
+
 ## [1.3.0](https://github.com/proxynth/payment-sandbox/compare/v1.2.1...v1.3.0) (2026-08-26)
 
 
