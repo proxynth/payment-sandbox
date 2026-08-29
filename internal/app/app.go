@@ -17,6 +17,9 @@ import (
 	"proxynth/payment-sandbox/internal/api"
 	paymenthttp "proxynth/payment-sandbox/internal/payment/adapters/http"
 	paymentsqlite "proxynth/payment-sandbox/internal/payment/adapters/sqlite"
+	paymentworkflowsqlite "proxynth/payment-sandbox/internal/paymentworkflow/adapters/sqlite"
+	paymentworkflowapplication "proxynth/payment-sandbox/internal/paymentworkflow/application"
+	paymentworkflowdomain "proxynth/payment-sandbox/internal/paymentworkflow/domain"
 	"proxynth/payment-sandbox/internal/platform/clock"
 	"proxynth/payment-sandbox/internal/platform/config"
 	"proxynth/payment-sandbox/internal/platform/logging"
@@ -28,9 +31,6 @@ import (
 	"proxynth/payment-sandbox/internal/provider/stripe"
 	replaymemory "proxynth/payment-sandbox/internal/replay/adapters/memory"
 	replayapplication "proxynth/payment-sandbox/internal/replay/application"
-	sagasqlite "proxynth/payment-sandbox/internal/saga/adapters/sqlite"
-	sagaapplication "proxynth/payment-sandbox/internal/saga/application"
-	sagadomain "proxynth/payment-sandbox/internal/saga/domain"
 	schedulersqlite "proxynth/payment-sandbox/internal/scheduler/adapters/sqlite"
 	schedulerapplication "proxynth/payment-sandbox/internal/scheduler/application"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
@@ -131,13 +131,13 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		return nil, fmt.Errorf("create scenario service: %w", err)
 	}
 	jobRepository := schedulersqlite.NewRepository(database)
-	sagaRepository := sagasqlite.NewRepository(database)
-	sagaPublisher := sagasqlite.NewPublisher(jobRepository)
+	workflowRepository := paymentworkflowsqlite.NewRepository(database)
+	workflowPublisher := paymentworkflowsqlite.NewPublisher(jobRepository)
 	eventPublisher, err := newPaymentEventPublisher(events, webhooks, jobRepository, virtualClock)
 	if err != nil {
 		return nil, fmt.Errorf("create payment event publisher: %w", err)
 	}
-	sagaOrchestrator, err := sagaapplication.NewOrchestrator(sagaRepository, sagaPublisher, virtualClock.Now)
+	workflowOrchestrator, err := paymentworkflowapplication.NewOrchestrator(workflowRepository, workflowPublisher, virtualClock.Now)
 	if err != nil {
 		return nil, fmt.Errorf("create saga orchestrator: %w", err)
 	}
@@ -145,7 +145,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve runtime provider: %w", err)
 	}
-	sagaExecutor, err := sagaapplication.NewPaymentExecutorWithPublisher(payments, provider, virtualClock, eventPublisher)
+	workflowExecutor, err := paymentworkflowapplication.NewPaymentExecutorWithPublisher(payments, provider, virtualClock, eventPublisher)
 	if err != nil {
 		return nil, fmt.Errorf("create saga executor: %w", err)
 	}
@@ -155,11 +155,11 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	}
 	worker, err := schedulerapplication.NewWorker(jobRepository, map[schedulerdomain.JobType]schedulerapplication.JobHandler{
 		"saga.step": func(ctx context.Context, payload []byte) error {
-			var message sagadomain.Message
+			var message paymentworkflowdomain.Message
 			if err := json.Unmarshal(payload, &message); err != nil {
 				return err
 			}
-			return sagaOrchestrator.Handle(ctx, message, sagaExecutor)
+			return workflowOrchestrator.Handle(ctx, message, workflowExecutor)
 		},
 		webhookapplication.DeliveryJobType: outboundCallback.Execute,
 	})

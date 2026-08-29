@@ -7,10 +7,10 @@ import (
 
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	paymentworkflowdomain "proxynth/payment-sandbox/internal/paymentworkflow/domain"
 	"proxynth/payment-sandbox/internal/platform/clock"
 	"proxynth/payment-sandbox/internal/platform/observability"
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
-	sagadoamin "proxynth/payment-sandbox/internal/saga/domain"
 )
 
 // PaymentExecutor is the application boundary between the Saga and the
@@ -34,7 +34,7 @@ func NewPaymentExecutorWithPublisher(payments paymentapplication.Repository, pro
 	return &PaymentExecutor{payments: payments, publisher: publisher, provider: provider, clock: businessClock}, nil
 }
 
-func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Message) (Execution, error) {
+func (e *PaymentExecutor) Execute(ctx context.Context, message paymentworkflowdomain.Message) (Execution, error) {
 	ctx = observability.WithMetadata(ctx, observability.Metadata{CorrelationID: message.CorrelationID, CausationID: message.CausationID})
 	payment, err := e.payments.FindByID(ctx, message.PaymentID)
 	if err != nil {
@@ -67,24 +67,24 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Messag
 		result, err = asyncProvider.ExecuteAsync(ctx, operation)
 	} else {
 		switch message.Step {
-		case sagadoamin.StepAuthorize:
+		case paymentworkflowdomain.StepAuthorize:
 			result, err = e.provider.Authorize(ctx, providerdomain.AuthorizeRequest{Payment: snapshot, At: e.clock.Now()})
-		case sagadoamin.StepCapture:
+		case paymentworkflowdomain.StepCapture:
 			amount, moneyErr := paymentdomain.NewMoney(input.Amount, input.Currency)
 			if moneyErr != nil {
 				return Execution{}, moneyErr
 			}
 			result, err = e.provider.Capture(ctx, providerdomain.CaptureRequest{Payment: snapshot, Amount: amount, At: e.clock.Now()})
-		case sagadoamin.StepRefund:
+		case paymentworkflowdomain.StepRefund:
 			amount, moneyErr := paymentdomain.NewMoney(input.Amount, input.Currency)
 			if moneyErr != nil {
 				return Execution{}, moneyErr
 			}
 			result, err = e.provider.Refund(ctx, providerdomain.RefundRequest{Payment: snapshot, Amount: amount, At: e.clock.Now()})
-		case sagadoamin.StepCancel:
+		case paymentworkflowdomain.StepCancel:
 			result, err = e.provider.Cancel(ctx, providerdomain.CancelRequest{Payment: snapshot, At: e.clock.Now()})
 		default:
-			return Execution{}, sagadoamin.ErrInvalidStep
+			return Execution{}, paymentworkflowdomain.ErrInvalidStep
 		}
 	}
 	if err != nil {
@@ -97,7 +97,7 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Messag
 		return Execution{Outcome: OutcomePending, AsyncOperations: result.AsyncOperations}, nil
 	}
 	if result.Outcome == providerdomain.OutcomeFailed {
-		if message.Step == sagadoamin.StepAuthorize {
+		if message.Step == paymentworkflowdomain.StepAuthorize {
 			if _, err := paymentapplication.NewFailPaymentWithPublisher(e.payments, e.publisher).Execute(ctx, paymentapplication.FailPaymentCommand{PaymentID: message.PaymentID}); err != nil {
 				return Execution{}, err
 			}
@@ -106,13 +106,13 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message sagadoamin.Messag
 	}
 
 	switch message.Step {
-	case sagadoamin.StepAuthorize:
+	case paymentworkflowdomain.StepAuthorize:
 		_, err = paymentapplication.NewAuthorizePaymentWithPublisher(e.payments, e.publisher).Execute(ctx, paymentapplication.AuthorizePaymentCommand{PaymentID: message.PaymentID})
-	case sagadoamin.StepCapture:
+	case paymentworkflowdomain.StepCapture:
 		_, err = paymentapplication.NewCapturePaymentWithPublisher(e.payments, e.publisher).Execute(ctx, paymentapplication.CapturePaymentCommand{PaymentID: message.PaymentID, Amount: input.Amount, Currency: input.Currency})
-	case sagadoamin.StepRefund:
+	case paymentworkflowdomain.StepRefund:
 		_, err = paymentapplication.NewRefundPaymentWithPublisher(e.payments, e.publisher).Execute(ctx, paymentapplication.RefundPaymentCommand{PaymentID: message.PaymentID, Amount: input.Amount, Currency: input.Currency})
-	case sagadoamin.StepCancel:
+	case paymentworkflowdomain.StepCancel:
 		_, err = paymentapplication.NewCancelPaymentWithPublisher(e.payments, e.publisher).Execute(ctx, paymentapplication.CancelPaymentCommand{PaymentID: message.PaymentID})
 	}
 	if err != nil {

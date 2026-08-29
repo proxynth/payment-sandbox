@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"proxynth/payment-sandbox/internal/saga/domain"
+	"proxynth/payment-sandbox/internal/paymentworkflow/domain"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 )
 
