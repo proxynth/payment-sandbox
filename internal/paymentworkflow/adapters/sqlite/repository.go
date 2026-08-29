@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"proxynth/payment-sandbox/internal/saga/domain"
+	"proxynth/payment-sandbox/internal/paymentworkflow/domain"
 )
 
 type executor interface {

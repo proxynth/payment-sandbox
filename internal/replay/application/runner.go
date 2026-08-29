@@ -9,17 +9,17 @@ import (
 
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	paymentworkflowapplication "proxynth/payment-sandbox/internal/paymentworkflow/application"
+	paymentworkflowdomain "proxynth/payment-sandbox/internal/paymentworkflow/domain"
 	"proxynth/payment-sandbox/internal/platform/clock"
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	replaydomain "proxynth/payment-sandbox/internal/replay/domain"
-	sagaapplication "proxynth/payment-sandbox/internal/saga/application"
-	sagadomain "proxynth/payment-sandbox/internal/saga/domain"
 	schedulerapplication "proxynth/payment-sandbox/internal/scheduler/application"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 )
 
 const providerAsyncJobType schedulerdomain.JobType = "provider.async"
-const sagaStepJobType schedulerdomain.JobType = "saga.step"
+const workflowStepJobType schedulerdomain.JobType = "saga.step"
 
 // Result contains the deterministic state produced by one scenario execution.
 type Result struct {
@@ -85,18 +85,18 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 	}
 
 	jobs := newScenarioJobRepository()
-	sagaStore := newScenarioSagaStore()
-	sagaPublisher := &scenarioSagaPublisher{jobs: jobs}
-	sagaOrchestrator, err := sagaapplication.NewOrchestrator(sagaStore, sagaPublisher, virtualClock.Now)
+	workflowStore := newScenarioSagaStore()
+	workflowPublisher := &scenarioSagaPublisher{jobs: jobs}
+	workflowOrchestrator, err := paymentworkflowapplication.NewOrchestrator(workflowStore, workflowPublisher, virtualClock.Now)
 	if err != nil {
 		return Result{}, err
 	}
-	sagaExecutor, err := sagaapplication.NewPaymentExecutor(repository, provider, virtualClock)
+	workflowExecutor, err := paymentworkflowapplication.NewPaymentExecutor(repository, provider, virtualClock)
 	if err != nil {
 		return Result{}, err
 	}
-	services := &commandServices{repository: repository, provider: provider, clock: virtualClock, jobs: jobs, saga: sagaOrchestrator, sagaExecutor: sagaExecutor}
-	worker, err := schedulerapplication.NewWorker(jobs, map[schedulerdomain.JobType]schedulerapplication.JobHandler{providerAsyncJobType: services.handleAsync, sagaStepJobType: services.handleSaga})
+	services := &commandServices{repository: repository, provider: provider, clock: virtualClock, jobs: jobs, workflow: workflowOrchestrator, workflowExecutor: workflowExecutor}
+	worker, err := schedulerapplication.NewWorker(jobs, map[schedulerdomain.JobType]schedulerapplication.JobHandler{providerAsyncJobType: services.handleAsync, workflowStepJobType: services.handleSaga})
 	if err != nil {
 		return Result{}, err
 	}
@@ -134,21 +134,21 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 }
 
 type commandServices struct {
-	repository   *memoryRepository
-	provider     providerdomain.Provider
-	clock        *clock.VirtualClock
-	jobs         *scenarioJobRepository
-	scheduler    *schedulerapplication.Scheduler
-	saga         *sagaapplication.Orchestrator
-	sagaExecutor *sagaapplication.PaymentExecutor
+	repository       *memoryRepository
+	provider         providerdomain.Provider
+	clock            *clock.VirtualClock
+	jobs             *scenarioJobRepository
+	scheduler        *schedulerapplication.Scheduler
+	workflow         *paymentworkflowapplication.Orchestrator
+	workflowExecutor *paymentworkflowapplication.PaymentExecutor
 }
 
 func (s *commandServices) handleSaga(ctx context.Context, payload []byte) error {
-	var message sagadomain.Message
+	var message paymentworkflowdomain.Message
 	if err := json.Unmarshal(payload, &message); err != nil {
 		return err
 	}
-	return s.saga.Handle(ctx, message, s.sagaExecutor)
+	return s.workflow.Handle(ctx, message, s.workflowExecutor)
 }
 
 func (s *commandServices) execute(
@@ -174,7 +174,7 @@ func (s *commandServices) execute(
 		if err != nil {
 			return nil, err
 		}
-		if err := s.saga.StartWithPayload(ctx, sagadomain.ID("saga:"+string(command.PaymentID)), string(command.PaymentID), payload, 0); err != nil {
+		if err := s.workflow.StartWithPayload(ctx, paymentworkflowdomain.ID("saga:"+string(command.PaymentID)), string(command.PaymentID), payload, 0); err != nil {
 			return nil, err
 		}
 		if err := s.scheduler.Tick(ctx); err != nil {
@@ -461,32 +461,32 @@ func (r *scenarioJobRepository) Acquire(ctx context.Context, id schedulerdomain.
 }
 
 type scenarioSagaStore struct {
-	instances map[sagadomain.ID]sagadomain.Instance
+	instances map[paymentworkflowdomain.ID]paymentworkflowdomain.Instance
 }
 
 func newScenarioSagaStore() *scenarioSagaStore {
-	return &scenarioSagaStore{instances: make(map[sagadomain.ID]sagadomain.Instance)}
+	return &scenarioSagaStore{instances: make(map[paymentworkflowdomain.ID]paymentworkflowdomain.Instance)}
 }
-func (s *scenarioSagaStore) Save(_ context.Context, instance sagadomain.Instance) error {
+func (s *scenarioSagaStore) Save(_ context.Context, instance paymentworkflowdomain.Instance) error {
 	s.instances[instance.ID] = instance
 	return nil
 }
-func (s *scenarioSagaStore) Find(_ context.Context, id sagadomain.ID) (sagadomain.Instance, error) {
+func (s *scenarioSagaStore) Find(_ context.Context, id paymentworkflowdomain.ID) (paymentworkflowdomain.Instance, error) {
 	instance, ok := s.instances[id]
 	if !ok {
-		return sagadomain.Instance{}, ErrAsyncOperationNotFound
+		return paymentworkflowdomain.Instance{}, ErrAsyncOperationNotFound
 	}
 	return instance, nil
 }
 
 type scenarioSagaPublisher struct{ jobs *scenarioJobRepository }
 
-func (p *scenarioSagaPublisher) Publish(ctx context.Context, message sagadomain.Message) error {
+func (p *scenarioSagaPublisher) Publish(ctx context.Context, message paymentworkflowdomain.Message) error {
 	payload, err := json.Marshal(message)
 	if err != nil {
 		return err
 	}
-	job, err := schedulerdomain.NewJob(schedulerdomain.JobID(message.ID), sagaStepJobType, payload, message.ScheduledAt)
+	job, err := schedulerdomain.NewJob(schedulerdomain.JobID(message.ID), workflowStepJobType, payload, message.ScheduledAt)
 	if err != nil {
 		return err
 	}

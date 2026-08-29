@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"proxynth/payment-sandbox/internal/paymentworkflow/domain"
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
-	"proxynth/payment-sandbox/internal/saga/domain"
 )
 
 func TestOrchestratorPublishesStepsAndCompensatesAfterFailure(t *testing.T) {
