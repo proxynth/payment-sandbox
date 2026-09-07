@@ -21,6 +21,8 @@ type EventLogRepository struct {
 	db eventExecutor
 }
 
+const sqliteTimestampLayout = "2006-01-02T15:04:05.000000000Z"
+
 func NewEventLogRepository(db eventExecutor) *EventLogRepository {
 	return &EventLogRepository{db: db}
 }
@@ -48,7 +50,7 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 		event.ID(),
 		event.AggregateID(),
 		event.Type(),
-		event.OccurredAt().UTC().Format(time.RFC3339Nano),
+		event.OccurredAt().UTC().Format(sqliteTimestampLayout),
 		event.AggregateVersion(),
 		event.CorrelationID(),
 		event.CausationID(),

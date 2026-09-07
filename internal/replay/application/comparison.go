@@ -7,6 +7,7 @@ import (
 	"time"
 
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
+	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 )
 
 const (
@@ -33,6 +34,7 @@ type Comparison struct {
 // implementation details or the order of payment result slices.
 func Compare(expected, actual Result) Comparison {
 	differences := make([]Difference, 0)
+	compareAsyncOperations(&differences, expected.AsyncOperations, actual.AsyncOperations)
 
 	if !expected.CurrentVirtualTime.Equal(actual.CurrentVirtualTime) {
 		differences = append(differences, Difference{
@@ -84,6 +86,32 @@ func Compare(expected, actual Result) Comparison {
 	return Comparison{
 		Equivalent:  len(differences) == 0,
 		Differences: differences,
+	}
+}
+
+func compareAsyncOperations(differences *[]Difference, expected, actual []providerdomain.AsyncOperation) {
+	left := make(map[string]providerdomain.AsyncOperation, len(expected))
+	right := make(map[string]providerdomain.AsyncOperation, len(actual))
+	for _, operation := range expected {
+		left[operation.ID] = operation
+	}
+	for _, operation := range actual {
+		right[operation.ID] = operation
+	}
+	for id, operation := range left {
+		other, ok := right[id]
+		if !ok {
+			*differences = append(*differences, Difference{Path: "async_operations[" + id + "]", Expected: "present", Actual: missingValue})
+			continue
+		}
+		if operation.PaymentID != other.PaymentID || operation.Type != other.Type || !operation.ScheduledAt.Equal(other.ScheduledAt) {
+			*differences = append(*differences, Difference{Path: "async_operations[" + id + "].definition", Expected: fmt.Sprintf("%s/%s/%s", operation.PaymentID, operation.Type, operation.ScheduledAt.UTC().Format(time.RFC3339Nano)), Actual: fmt.Sprintf("%s/%s/%s", other.PaymentID, other.Type, other.ScheduledAt.UTC().Format(time.RFC3339Nano))})
+		}
+	}
+	for id := range right {
+		if _, ok := left[id]; !ok {
+			*differences = append(*differences, Difference{Path: "async_operations[" + id + "]", Expected: unexpectedValue, Actual: "present"})
+		}
 	}
 }
 

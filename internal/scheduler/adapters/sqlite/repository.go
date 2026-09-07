@@ -17,6 +17,10 @@ type executor interface {
 
 type Repository struct{ db executor }
 
+const sqliteTimestampLayout = "2006-01-02T15:04:05.000000000Z"
+
+func formatTimestamp(at time.Time) string { return at.UTC().Format(sqliteTimestampLayout) }
+
 func NewRepository(db executor) *Repository { return &Repository{db: db} }
 
 func (r *Repository) Save(ctx context.Context, job *domain.Job) error {
@@ -25,15 +29,16 @@ func (r *Repository) Save(ctx context.Context, job *domain.Job) error {
 	}
 	leaseExpires := ""
 	if !job.LeaseExpiresAt().IsZero() {
-		leaseExpires = job.LeaseExpiresAt().UTC().Format(time.RFC3339Nano)
+		leaseExpires = formatTimestamp(job.LeaseExpiresAt())
 	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT(id) DO UPDATE SET type=excluded.type,payload=excluded.payload,
 		 scheduled_at=excluded.scheduled_at,next_attempt_at=excluded.next_attempt_at,status=excluded.status,
-		 lease_owner=excluded.lease_owner,lease_expires_at=excluded.lease_expires_at,attempts=excluded.attempts`,
-		job.ID(), job.Type(), job.Payload(), job.ScheduledAt().UTC().Format(time.RFC3339Nano), job.NextAttemptAt().UTC().Format(time.RFC3339Nano), job.Status(), job.LeaseOwner(), leaseExpires, job.Attempts())
+		 lease_owner=excluded.lease_owner,lease_expires_at=excluded.lease_expires_at,attempts=excluded.attempts
+		 WHERE scheduler_jobs.status <> $10`,
+		job.ID(), job.Type(), job.Payload(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.Status(), job.LeaseOwner(), leaseExpires, job.Attempts(), domain.JobCompleted)
 	if err != nil {
 		return fmt.Errorf("save scheduler job %q: %w", job.ID(), err)
 	}
@@ -41,7 +46,7 @@ func (r *Repository) Save(ctx context.Context, job *domain.Job) error {
 }
 
 func (r *Repository) FindExecutable(ctx context.Context, at time.Time, limit int) ([]*domain.Job, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts FROM scheduler_jobs WHERE status IN ($1,$2) AND next_attempt_at <= $3 ORDER BY next_attempt_at,id LIMIT $4`, domain.JobPending, domain.JobFailed, at.UTC().Format(time.RFC3339Nano), limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts FROM scheduler_jobs WHERE ((status IN ($1,$2) AND next_attempt_at <= $3) OR (status IN ($5,$6) AND lease_expires_at <> '' AND lease_expires_at <= $3)) ORDER BY next_attempt_at,id LIMIT $4`, domain.JobPending, domain.JobFailed, formatTimestamp(at), limit, domain.JobLeased, domain.JobRunning)
 	if err != nil {
 		return nil, err
 	}
@@ -63,22 +68,18 @@ func (r *Repository) FindExecutable(ctx context.Context, at time.Time, limit int
 }
 
 func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string, expiresAt, leaseCheckAt time.Time) (*domain.Job, error) {
-	job, err := r.find(ctx, id)
+	result, err := r.db.ExecContext(ctx, `UPDATE scheduler_jobs SET status=$1, lease_owner=$2, lease_expires_at=$3 WHERE id=$4 AND (status=$5 OR (status IN ($6,$7) AND lease_expires_at <> '' AND lease_expires_at <= $8))`, domain.JobLeased, owner, formatTimestamp(expiresAt), id, domain.JobPending, domain.JobLeased, domain.JobRunning, formatTimestamp(leaseCheckAt))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("acquire job %q: %w", id, err)
 	}
-	if job.RequeueExpired(leaseCheckAt.UTC()) {
-		if err := r.Save(ctx, job); err != nil {
-			return nil, err
-		}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("acquire job %q rows affected: %w", id, err)
 	}
-	if err := job.Lease(owner, expiresAt); err != nil {
-		return nil, err
+	if changed == 0 {
+		return nil, fmt.Errorf("acquire job %q: %w", id, domain.ErrInvalidJobTransition)
 	}
-	if err := r.Save(ctx, job); err != nil {
-		return nil, err
-	}
-	return job, nil
+	return r.find(ctx, id)
 }
 
 func (r *Repository) find(ctx context.Context, id domain.JobID) (*domain.Job, error) {

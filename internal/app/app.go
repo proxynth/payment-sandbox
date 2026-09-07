@@ -153,7 +153,11 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create webhook delivery handler: %w", err)
 	}
-	worker, err := schedulerapplication.NewWorker(jobRepository, map[schedulerdomain.JobType]schedulerapplication.JobHandler{
+	retryPolicy, err := schedulerdomain.NewExponentialBackoffPolicy(3, 30*time.Second, 5*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("create scheduler retry policy: %w", err)
+	}
+	worker, err := schedulerapplication.NewWorkerWithRetry(jobRepository, map[schedulerdomain.JobType]schedulerapplication.JobHandler{
 		"saga.step": func(ctx context.Context, payload []byte) error {
 			var message paymentworkflowdomain.Message
 			if err := json.Unmarshal(payload, &message); err != nil {
@@ -162,7 +166,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 			return workflowOrchestrator.Handle(ctx, message, workflowExecutor)
 		},
 		webhookapplication.DeliveryJobType: outboundCallback.Execute,
-	})
+	}, retryPolicy, virtualClock)
 	if err != nil {
 		return nil, fmt.Errorf("create scheduler worker: %w", err)
 	}
