@@ -176,7 +176,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		return nil, fmt.Errorf("create scheduler: %w", err)
 	}
 
-	paymentHandler, err := paymenthttp.NewHandlerWithPublisherAndIdempotency(payments, eventPublisher, idempotencysqlite.NewRepository(database))
+	paymentHandler, err := paymenthttp.NewHandlerWithPublisherAndIdempotencyAndTransaction(payments, eventPublisher, idempotencysqlite.NewRepository(database), sqlite.NewTransactionManager(database))
 	if err != nil {
 		return nil, fmt.Errorf("create payment handler: %w", err)
 	}

@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,9 @@ type Handler struct {
 	refund      *paymentapplication.RefundPayment
 	cancel      *paymentapplication.CancelPayment
 	idempotency idempotencyapplication.Repository
+	transaction interface {
+		WithinContext(context.Context, func(context.Context) error) error
+	}
 }
 
 func NewHandler(repository paymentapplication.Repository) (*Handler, error) {
@@ -35,10 +39,16 @@ func NewHandler(repository paymentapplication.Repository) (*Handler, error) {
 }
 
 func NewHandlerWithPublisher(repository paymentapplication.Repository, publisher paymentapplication.EventPublisher) (*Handler, error) {
-	return NewHandlerWithPublisherAndIdempotency(repository, publisher, nil)
+	return NewHandlerWithPublisherAndIdempotencyAndTransaction(repository, publisher, nil, nil)
 }
 
 func NewHandlerWithPublisherAndIdempotency(repository paymentapplication.Repository, publisher paymentapplication.EventPublisher, idempotency idempotencyapplication.Repository) (*Handler, error) {
+	return NewHandlerWithPublisherAndIdempotencyAndTransaction(repository, publisher, idempotency, nil)
+}
+
+func NewHandlerWithPublisherAndIdempotencyAndTransaction(repository paymentapplication.Repository, publisher paymentapplication.EventPublisher, idempotency idempotencyapplication.Repository, transaction interface {
+	WithinContext(context.Context, func(context.Context) error) error
+}) (*Handler, error) {
 	if repository == nil {
 		return nil, ErrNilRepository
 	}
@@ -51,17 +61,46 @@ func NewHandlerWithPublisherAndIdempotency(repository paymentapplication.Reposit
 		refund:      paymentapplication.NewRefundPaymentWithPublisher(repository, publisher),
 		cancel:      paymentapplication.NewCancelPaymentWithPublisher(repository, publisher),
 		idempotency: idempotency,
+		transaction: transaction,
 	}, nil
 }
 
 func (h *Handler) Register(server *api.Server) error {
-	if err := server.Handle(http.MethodPost, "/payments", h.idempotent(http.HandlerFunc(h.createPayment))); err != nil {
+	wrapped := h.transactional(h.idempotent(http.HandlerFunc(h.createPayment)))
+	if err := server.Handle(http.MethodPost, "/payments", wrapped); err != nil {
 		return err
 	}
 	if err := server.HandlePrefix(http.MethodGet, paymentPathPrefix, http.HandlerFunc(h.getPayment)); err != nil {
 		return err
 	}
-	return server.HandlePrefix(http.MethodPost, paymentPathPrefix, h.idempotent(http.HandlerFunc(h.command)))
+	return server.HandlePrefix(http.MethodPost, paymentPathPrefix, h.transactional(h.idempotent(http.HandlerFunc(h.command))))
+}
+
+func (h *Handler) transactional(next http.Handler) http.Handler {
+	if h.transaction == nil {
+		return next
+	}
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		buffer := newBufferedWriter()
+		err := h.transaction.WithinContext(request.Context(), func(ctx context.Context) error {
+			next.ServeHTTP(buffer, request.WithContext(ctx))
+			if buffer.status >= 500 {
+				return errors.New("payment request failed; transaction rolled back")
+			}
+			return nil
+		})
+		if err != nil {
+			api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		for name, values := range buffer.header {
+			for _, value := range values {
+				writer.Header().Add(name, value)
+			}
+		}
+		writer.WriteHeader(buffer.status)
+		_, _ = writer.Write(buffer.body.Bytes())
+	})
 }
 
 type bufferedWriter struct {

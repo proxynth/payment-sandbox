@@ -8,6 +8,7 @@ import (
 
 	"proxynth/payment-sandbox/internal/payment/application"
 	"proxynth/payment-sandbox/internal/payment/domain"
+	persistencesqlite "proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 )
 
 var _ application.Repository = (*Repository)(nil)
@@ -54,7 +55,11 @@ func (r *Repository) Save(ctx context.Context, payment *domain.Payment) error {
    			version = EXCLUDED.version
 	   WHERE payments.version = EXCLUDED.version - 1`
 
-	result, err := r.db.ExecContext(
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	result, err := exec.ExecContext(
 		ctx,
 		query,
 		payment.ID(),
@@ -115,7 +120,11 @@ func (r *Repository) FindByID(ctx context.Context, id domain.ID) (*domain.Paymen
 		version          uint64
 	)
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	err := exec.QueryRowContext(ctx, query, id).Scan(
 		&storedID,
 		&status,
 		&amount,

@@ -8,6 +8,7 @@ import (
 
 	"proxynth/payment-sandbox/internal/payment/application"
 	"proxynth/payment-sandbox/internal/payment/domain"
+	persistencesqlite "proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 )
 
 var _ application.EventLog = (*EventLogRepository)(nil)
@@ -44,7 +45,11 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 		) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`
 
-	result, err := r.db.ExecContext(
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	result, err := exec.ExecContext(
 		ctx,
 		query,
 		event.ID(),
@@ -87,7 +92,11 @@ func (r *EventLogRepository) ListByAggregate(
 		WHERE aggregate_id = ?
 		ORDER BY occurred_at ASC, aggregate_version ASC, id ASC`
 
-	rows, err := r.db.QueryContext(ctx, query, aggregateID)
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	rows, err := exec.QueryContext(ctx, query, aggregateID)
 	if err != nil {
 		return nil, fmt.Errorf("list events for aggregate %q: %w", aggregateID, err)
 	}

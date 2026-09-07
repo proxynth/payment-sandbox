@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"proxynth/payment-sandbox/internal/idempotency/application"
+	persistencesqlite "proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 )
 
 type executor interface {
@@ -22,7 +23,11 @@ func (r *Repository) Reserve(ctx context.Context, record application.Record) (bo
 	if record.ResponseBody == nil {
 		record.ResponseBody = []byte{}
 	}
-	result, err := r.db.ExecContext(ctx, `
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	result, err := exec.ExecContext(ctx, `
 		INSERT INTO idempotency_records(scope,key,fingerprint,status,response_status,response_body)
 		VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(scope,key) DO NOTHING`,
 		record.Scope, record.Key, record.Fingerprint, record.Status, record.ResponseStatus, record.ResponseBody)
@@ -48,7 +53,11 @@ func (r *Repository) Reserve(ctx context.Context, record application.Record) (bo
 
 func (r *Repository) Find(ctx context.Context, scope, key string) (application.Record, error) {
 	var record application.Record
-	err := r.db.QueryRowContext(ctx, `SELECT scope,key,fingerprint,status,response_status,response_body FROM idempotency_records WHERE scope=$1 AND key=$2`, scope, key).
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	err := exec.QueryRowContext(ctx, `SELECT scope,key,fingerprint,status,response_status,response_body FROM idempotency_records WHERE scope=$1 AND key=$2`, scope, key).
 		Scan(&record.Scope, &record.Key, &record.Fingerprint, &record.Status, &record.ResponseStatus, &record.ResponseBody)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.Record{}, application.ErrNotFound
@@ -63,7 +72,11 @@ func (r *Repository) Complete(ctx context.Context, record application.Record) er
 	if record.ResponseBody == nil {
 		record.ResponseBody = []byte{}
 	}
-	result, err := r.db.ExecContext(ctx, `UPDATE idempotency_records SET status=$1,response_status=$2,response_body=$3 WHERE scope=$4 AND key=$5 AND fingerprint=$6`, record.Status, record.ResponseStatus, record.ResponseBody, record.Scope, record.Key, record.Fingerprint)
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	result, err := exec.ExecContext(ctx, `UPDATE idempotency_records SET status=$1,response_status=$2,response_body=$3 WHERE scope=$4 AND key=$5 AND fingerprint=$6`, record.Status, record.ResponseStatus, record.ResponseBody, record.Scope, record.Key, record.Fingerprint)
 	if err != nil {
 		return fmt.Errorf("complete idempotency record: %w", err)
 	}
@@ -78,7 +91,11 @@ func (r *Repository) Complete(ctx context.Context, record application.Record) er
 }
 
 func (r *Repository) Release(ctx context.Context, scope, key, fingerprint string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM idempotency_records WHERE scope=$1 AND key=$2 AND fingerprint=$3 AND status=$4`, scope, key, fingerprint, "processing")
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	_, err := exec.ExecContext(ctx, `DELETE FROM idempotency_records WHERE scope=$1 AND key=$2 AND fingerprint=$3 AND status=$4`, scope, key, fingerprint, "processing")
 	if err != nil {
 		return fmt.Errorf("release idempotency record: %w", err)
 	}
