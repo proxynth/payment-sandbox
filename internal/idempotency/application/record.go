@@ -15,4 +15,5 @@ type Repository interface {
 	Reserve(context.Context, Record) (bool, error)
 	Find(context.Context, string, string) (Record, error)
 	Complete(context.Context, Record) error
+	Release(context.Context, string, string, string) error
 }

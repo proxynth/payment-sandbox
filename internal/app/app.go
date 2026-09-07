@@ -15,6 +15,7 @@ import (
 
 	administrationhttp "proxynth/payment-sandbox/internal/administration/adapters/http"
 	"proxynth/payment-sandbox/internal/api"
+	idempotencysqlite "proxynth/payment-sandbox/internal/idempotency/adapters/sqlite"
 	paymenthttp "proxynth/payment-sandbox/internal/payment/adapters/http"
 	paymentsqlite "proxynth/payment-sandbox/internal/payment/adapters/sqlite"
 	paymentworkflowsqlite "proxynth/payment-sandbox/internal/paymentworkflow/adapters/sqlite"
@@ -175,7 +176,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		return nil, fmt.Errorf("create scheduler: %w", err)
 	}
 
-	paymentHandler, err := paymenthttp.NewHandlerWithPublisher(payments, eventPublisher)
+	paymentHandler, err := paymenthttp.NewHandlerWithPublisherAndIdempotency(payments, eventPublisher, idempotencysqlite.NewRepository(database))
 	if err != nil {
 		return nil, fmt.Errorf("create payment handler: %w", err)
 	}

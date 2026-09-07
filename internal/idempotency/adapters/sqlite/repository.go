@@ -76,3 +76,11 @@ func (r *Repository) Complete(ctx context.Context, record application.Record) er
 	}
 	return nil
 }
+
+func (r *Repository) Release(ctx context.Context, scope, key, fingerprint string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM idempotency_records WHERE scope=$1 AND key=$2 AND fingerprint=$3 AND status=$4`, scope, key, fingerprint, "processing")
+	if err != nil {
+		return fmt.Errorf("release idempotency record: %w", err)
+	}
+	return nil
+}
