@@ -166,6 +166,31 @@ func TestAuditEventFailureDoesNotCommitPayment(t *testing.T) {
 	}
 }
 
+// Invariant: new runtime event histories can independently reconstruct the
+// same current payment state, including partial monetary transitions.
+func TestAuditEventLogReconstructsCurrentPaymentState(t *testing.T) {
+	db := auditDB(t)
+	a := auditRuntime(t, db)
+	auditPayment(t, a)
+	auditHTTP(t, a, "POST", "/payments/p/capture", `{"amount":400,"currency":"EUR"}`, "capture-1", 200)
+
+	current, err := ps.NewRepository(db).FindByID(auditContext(), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := ps.NewEventLogRepository(db).ListByAggregate(auditContext(), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconstructed, err := pa.ReconstructFromEvents(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reconstructed.ID() != current.ID() || reconstructed.Status() != current.Status() || reconstructed.Version() != current.Version() || reconstructed.AuthorizedAmount() != current.AuthorizedAmount() || reconstructed.CapturedAmount() != current.CapturedAmount() || reconstructed.RefundedAmount() != current.RefundedAmount() {
+		t.Fatalf("event reconstruction=%#v, current=%#v", reconstructed, current)
+	}
+}
+
 type auditCrashPublisher struct{}
 
 func (auditCrashPublisher) Publish(context.Context, *pd.Payment, pd.EventType) error {
