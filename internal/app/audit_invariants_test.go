@@ -323,7 +323,7 @@ type auditBarrierDB struct {
 }
 
 func (b auditBarrierDB) ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error) {
-	if strings.Contains(q, "INSERT INTO scheduler_jobs") {
+	if strings.Contains(q, "UPDATE scheduler_jobs SET status") {
 		b.arrived <- struct{}{}
 		select {
 		case <-b.release:
@@ -335,7 +335,7 @@ func (b auditBarrierDB) ExecContext(ctx context.Context, q string, args ...any) 
 }
 
 // Invariant: two concurrent acquisitions grant at most one lease and one effect.
-// Barrier pauses only before each lease write, after both real SQLite reads.
+// Barrier pauses each atomic lease write until both contenders are ready.
 func TestAuditConcurrentAcquisitionHasOneWinner(t *testing.T) {
 	db := auditDB(t)
 	base := ss.NewRepository(db)

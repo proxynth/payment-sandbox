@@ -66,11 +66,6 @@ func (r *Repository) FindExecutable(ctx context.Context, at time.Time, limit int
 		if err != nil {
 			return nil, err
 		}
-		if job.Status() == domain.JobFailed {
-			if err := job.ScheduleRetry(at); err != nil {
-				return nil, err
-			}
-		}
 		jobs = append(jobs, job)
 	}
 	return jobs, rows.Err()
@@ -81,7 +76,7 @@ func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string,
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	result, err := exec.ExecContext(ctx, `UPDATE scheduler_jobs SET status=$1, lease_owner=$2, lease_expires_at=$3 WHERE id=$4 AND (status=$5 OR (status IN ($6,$7) AND lease_expires_at <> '' AND lease_expires_at <= $8))`, domain.JobLeased, owner, formatTimestamp(expiresAt), id, domain.JobPending, domain.JobLeased, domain.JobRunning, formatTimestamp(leaseCheckAt))
+	result, err := exec.ExecContext(ctx, `UPDATE scheduler_jobs SET status=$1, lease_owner=$2, lease_expires_at=$3 WHERE id=$4 AND (status IN ($5,$6) OR (status IN ($7,$8) AND lease_expires_at <> '' AND lease_expires_at <= $9))`, domain.JobLeased, owner, formatTimestamp(expiresAt), id, domain.JobPending, domain.JobFailed, domain.JobLeased, domain.JobRunning, formatTimestamp(leaseCheckAt))
 	if err != nil {
 		return nil, fmt.Errorf("acquire job %q: %w", id, err)
 	}
