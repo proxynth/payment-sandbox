@@ -35,11 +35,12 @@ func TestOpenAPIContractIsValidAndCoversRegisteredRoutes(t *testing.T) {
 		"/webhook-endpoints/{endpointId}": {"get"},
 		"/admin/time":                     {"get"}, "/admin/time/advance": {"post"},
 		"/admin/providers": {"get"}, "/admin/scenarios": {"post"},
-		"/admin/scenarios/{scenarioId}":           {"get"},
-		"/admin/scenarios/{scenarioId}/execute":   {"post"},
-		"/admin/payments/{paymentId}/timeline":    {"get"},
-		"/admin/diagnostics/payments/{paymentId}": {"get"},
-		"/admin/webhook-jobs/{jobId}/deliveries": {"get"},
+		"/admin/scenarios/{scenarioId}":               {"get"},
+		"/admin/scenarios/{scenarioId}/execute":       {"post"},
+		"/admin/payments/{paymentId}/timeline":        {"get"},
+		"/admin/diagnostics/payments/{paymentId}":     {"get"},
+		"/admin/webhook-jobs/{jobId}/deliveries":      {"get"},
+		"/admin/runtime-history/payments/{paymentId}": {"get"},
 	}
 	for route, methods := range wants {
 		for _, method := range methods {

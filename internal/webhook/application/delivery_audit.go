@@ -34,3 +34,8 @@ type DeliveryAttempt struct {
 type DeliveryAudit interface {
 	Record(context.Context, DeliveryAttempt) error
 }
+
+// DeliveryAuditReader exposes the durable, body-free delivery history.
+type DeliveryAuditReader interface {
+	ListByJob(context.Context, string) ([]DeliveryAttempt, error)
+}

@@ -204,6 +204,10 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create webhook audit handler: %w", err)
 	}
+	runtimeHistoryHandler, err := administrationhttp.NewRuntimeHistoryHandler(events, jobRepository, webhooksqlite.NewDeliveryAuditRepository(database))
+	if err != nil {
+		return nil, fmt.Errorf("create runtime history handler: %w", err)
+	}
 
 	registrations := []struct {
 		name     string
@@ -216,6 +220,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		{"timeline", func() error { return timelineHandler.Register(server, cfg.Admin.Token) }},
 		{"diagnostics", func() error { return diagnosticsHandler.Register(server, cfg.Admin.Token) }},
 		{"webhook audit", func() error { return webhookAuditHandler.Register(server, cfg.Admin.Token) }},
+		{"runtime history", func() error { return runtimeHistoryHandler.Register(server, cfg.Admin.Token) }},
 	}
 	for _, registration := range registrations {
 		if err := registration.register(); err != nil {

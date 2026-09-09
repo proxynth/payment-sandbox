@@ -86,6 +86,10 @@
     "/admin/webhook-jobs/{jobId}/deliveries": {
       "parameters": [{"$ref": "#/components/parameters/JobId"}],
       "get": {"tags": ["Administration"], "summary": "Read webhook delivery audit", "operationId": "getWebhookDeliveryAudit", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/WebhookDeliveryAudit"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}
+    },
+    "/admin/runtime-history/payments/{paymentId}": {
+      "parameters": [{"$ref": "#/components/parameters/PaymentId"}],
+      "get": {"tags": ["Administration"], "summary": "Read payment runtime history", "operationId": "getPaymentRuntimeHistory", "security": [{"AdminBearerAuth": []}], "responses": {"200": {"description": "Reconstructed payment, events, jobs and delivery audit.", "content": {"application/json": {"schema": {"type": "object"}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}
     }
   },
   "components": {
