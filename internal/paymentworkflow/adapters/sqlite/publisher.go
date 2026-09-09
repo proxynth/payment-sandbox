@@ -25,7 +25,7 @@ func (p *Publisher) Publish(ctx context.Context, message domain.Message) error {
 	if err != nil {
 		return fmt.Errorf("marshal saga message: %w", err)
 	}
-	job, err := schedulerdomain.NewJob(schedulerdomain.JobID(message.ID), "saga.step", payload, message.ScheduledAt)
+	job, err := schedulerdomain.NewJob(schedulerdomain.JobID(message.ID), "saga.step", payload, message.ScheduledAt, schedulerdomain.JobMetadata{AggregateID: string(message.PaymentID), CausationID: message.CausationID})
 	if err != nil {
 		return err
 	}

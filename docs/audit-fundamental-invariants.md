@@ -7,7 +7,7 @@
 - Commit initial : `c12c9f9768532ca7ca2209568982e686ebbf4ac1`
 - Branche de correction : `audit/fundamental-invariants`
 - Go : 1.25.7
-- Persistance exercée : SQLite migré jusqu'à la version 11
+- Persistance exercée : SQLite migré jusqu'à la version 13
 
 Les commandes exécutées après corrections sont `go test ./...`, `go test -race ./...` et `go vet ./...`. Elles passent toutes.
 
@@ -25,6 +25,7 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 | Paiement, événement et jobs webhook sont atomiques | tests de crash et d'échec de publication | garanti pour les transitions de paiement |
 | Un job échoué peut être repris | `TestAuditFailedJobCanRetry` | garanti |
 | Le cycle des jobs est conservé et restaurable | snapshots append-only `scheduler_job_audit` et test SQLite | garanti pour les snapshots créés après migration 12 |
+| Un job est relié à sa cause métier | métadonnées `aggregate_id` / `causation_id` persistées | garanti pour les nouveaux jobs créés après migration 13 |
 | Chaque tentative webhook laisse une trace durable | `webhook_delivery_audit`, tests applicatifs et SQLite | garanti : résultat final ou marqueur `started` au résultat inconnu |
 | Un crash après succès HTTP rend le doublon visible | `TestAuditWebhookCrashAfterSuccessBeforeCompletionIsTraceable` | garanti, livraison externe at-least-once |
 | Deux workers n'obtiennent pas le même job | `TestAuditConcurrentAcquisitionHasOneWinner` et `-race` | garanti par acquisition SQL conditionnelle |
@@ -46,7 +47,7 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 
 ## Limites résiduelles
 
-- Le replay de scénarios ne reconstitue pas encore automatiquement un runtime historique global. En revanche, l'état métier paiement est reconstructible depuis un historique complet d'`event_log` créé après la migration 8, et chaque job est restaurable depuis son historique `scheduler_job_audit` enrichi après la migration 12.
+- Le replay de scénarios ne reconstitue pas encore automatiquement un runtime historique global. En revanche, l'état métier paiement est reconstructible depuis un historique complet d'`event_log` créé après la migration 8, et chaque job est restaurable depuis son historique `scheduler_job_audit` enrichi après la migration 12. Les nouveaux jobs portent en plus une cause métier explicite depuis la migration 13 ; les jobs antérieurs restent sans lien causal rétroactif fiable.
 - L'audit webhook conserve le code HTTP et l'erreur de transport, mais pas les corps de requête ou de réponse : ils peuvent contenir des données sensibles et ne sont pas nécessaires au diagnostic initial. Une entrée `started` sans résultat final signale une tentative dont le résultat n'a pas pu être durablement enregistré (crash ou échec d'écriture après l’appel HTTP) ; elle ne permet pas d'affirmer si le destinataire a reçu le message.
 - Une requête runtime sans `X-Correlation-ID` reçoit un identifiant dérivé de façon stable de sa méthode, son chemin, sa query et son corps. Le client peut toujours fournir sa propre valeur pour rattacher plusieurs requêtes à une même trace.
 - SQLite apporte l'atomicité locale testée ici. Le projet ne revendique pas de disponibilité ou de coordination multi-processus au-delà de ses verrous SQLite.

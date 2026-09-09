@@ -67,7 +67,7 @@ func TestRepositoryAuditSnapshotsRestoreCompletedJob(t *testing.T) {
 	}
 
 	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	job, err := domain.NewJob("job-audit", "webhook.delivery", []byte(`{"event":"payment.authorized"}`), at)
+	job, err := domain.NewJob("job-audit", "webhook.delivery", []byte(`{"event":"payment.authorized"}`), at, domain.JobMetadata{AggregateID: "payment-1", CausationID: "event-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestRepositoryAuditSnapshotsRestoreCompletedJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.ID() != job.ID() || restored.Type() != job.Type() || string(restored.Payload()) != string(job.Payload()) || restored.Status() != domain.JobCompleted || restored.Attempts() != 1 {
+	if restored.ID() != job.ID() || restored.Type() != job.Type() || string(restored.Payload()) != string(job.Payload()) || restored.AggregateID() != "payment-1" || restored.CausationID() != "event-1" || restored.Status() != domain.JobCompleted || restored.Attempts() != 1 {
 		t.Fatalf("restored job = %#v", restored)
 	}
 }

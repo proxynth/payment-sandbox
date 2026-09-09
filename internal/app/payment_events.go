@@ -115,7 +115,7 @@ func (p *paymentEventPublisher) scheduleDelivery(
 		return err
 	}
 	jobID := schedulerdomain.JobID(fmt.Sprintf("webhook:%s:%s", event.ID(), endpoint.ID()))
-	job, err := schedulerdomain.NewJob(jobID, webhookapplication.DeliveryJobType, payload, at)
+	job, err := schedulerdomain.NewJob(jobID, webhookapplication.DeliveryJobType, payload, at, schedulerdomain.JobMetadata{AggregateID: string(event.AggregateID()), CausationID: string(event.ID())})
 	if err != nil {
 		return err
 	}

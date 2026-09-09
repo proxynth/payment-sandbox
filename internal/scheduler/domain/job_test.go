@@ -163,6 +163,16 @@ func TestJob_CopiesPayload(t *testing.T) {
 	}
 }
 
+func TestJobCarriesOptionalBusinessCausation(t *testing.T) {
+	job, err := NewJob("job-1", "webhook.delivery", nil, time.Unix(1, 0), JobMetadata{AggregateID: "payment-1", CausationID: "event-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.AggregateID() != "payment-1" || job.CausationID() != "event-1" {
+		t.Fatalf("metadata=%q/%q", job.AggregateID(), job.CausationID())
+	}
+}
+
 func newTestJob(t *testing.T) *Job {
 	t.Helper()
 
