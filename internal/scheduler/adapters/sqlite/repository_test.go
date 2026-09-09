@@ -45,4 +45,11 @@ func TestRepositoryRoundTripsAndAcquiresJob(t *testing.T) {
 	if acquired.Status() != domain.JobLeased || acquired.LeaseOwner() != "worker-1" {
 		t.Fatalf("acquired job = %+v", acquired)
 	}
+	var snapshots int
+	if err := db.QueryRow(`SELECT count(*) FROM scheduler_job_audit WHERE job_id = ?`, job.ID()).Scan(&snapshots); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots != 2 {
+		t.Fatalf("audit snapshots = %d, want 2", snapshots)
+	}
 }

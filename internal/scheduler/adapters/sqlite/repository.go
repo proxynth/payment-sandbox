@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"time"
@@ -36,7 +37,7 @@ func (r *Repository) Save(ctx context.Context, job *domain.Job) error {
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	_, err := exec.ExecContext(ctx, `
+	result, err := exec.ExecContext(ctx, `
 		INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT(id) DO UPDATE SET type=excluded.type,payload=excluded.payload,
@@ -46,6 +47,15 @@ func (r *Repository) Save(ctx context.Context, job *domain.Job) error {
 		job.ID(), job.Type(), job.Payload(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.Status(), job.LeaseOwner(), leaseExpires, job.Attempts(), domain.JobCompleted)
 	if err != nil {
 		return fmt.Errorf("save scheduler job %q: %w", job.ID(), err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("save scheduler job %q rows affected: %w", job.ID(), err)
+	}
+	if changed > 0 {
+		if err := appendAudit(ctx, exec, job); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -87,7 +97,28 @@ func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string,
 	if changed == 0 {
 		return nil, fmt.Errorf("acquire job %q: %w", id, domain.ErrInvalidJobTransition)
 	}
-	return r.find(ctx, id)
+	job, err := r.find(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := appendAudit(ctx, exec, job); err != nil {
+		return nil, err
+	}
+	return job, nil
+}
+
+func appendAudit(ctx context.Context, exec executor, job *domain.Job) error {
+	leaseExpires := ""
+	if !job.LeaseExpiresAt().IsZero() {
+		leaseExpires = formatTimestamp(job.LeaseExpiresAt())
+	}
+	snapshot := fmt.Sprintf("%s|%s|%d|%s|%s|%s|%s", job.ID(), job.Status(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires)
+	hash := sha256.Sum256([]byte(snapshot))
+	_, err := exec.ExecContext(ctx, `INSERT INTO scheduler_job_audit(id,job_id,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, fmt.Sprintf("%x", hash[:]), job.ID(), job.Status(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires)
+	if err != nil {
+		return fmt.Errorf("append scheduler audit for job %q: %w", job.ID(), err)
+	}
+	return nil
 }
 
 func (r *Repository) find(ctx context.Context, id domain.JobID) (*domain.Job, error) {
