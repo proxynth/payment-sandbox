@@ -41,8 +41,9 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 			occurred_at,
 			aggregate_version,
 			correlation_id,
-			causation_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			causation_id,
+			payload
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`
 
 	exec := r.db
@@ -59,6 +60,7 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 		event.AggregateVersion(),
 		event.CorrelationID(),
 		event.CausationID(),
+		string(event.Payload()),
 	)
 	if err != nil {
 		return fmt.Errorf("append event %q: %w", event.ID(), err)
@@ -87,7 +89,8 @@ func (r *EventLogRepository) ListByAggregate(
 			occurred_at,
 			aggregate_version,
 			correlation_id,
-			causation_id
+			causation_id,
+			payload
 		FROM event_log
 		WHERE aggregate_id = ?
 		ORDER BY occurred_at ASC, aggregate_version ASC, id ASC`
@@ -112,6 +115,7 @@ func (r *EventLogRepository) ListByAggregate(
 			aggregateVersion uint64
 			correlationID    string
 			causationID      string
+			payload          []byte
 		)
 
 		if err := rows.Scan(
@@ -122,6 +126,7 @@ func (r *EventLogRepository) ListByAggregate(
 			&aggregateVersion,
 			&correlationID,
 			&causationID,
+			&payload,
 		); err != nil {
 			return nil, fmt.Errorf("scan event for aggregate %q: %w", aggregateID, err)
 		}
@@ -131,7 +136,7 @@ func (r *EventLogRepository) ListByAggregate(
 			return nil, fmt.Errorf("parse event %q timestamp: %w", id, err)
 		}
 
-		event, err := domain.NewBusinessEvent(
+		event, err := domain.NewBusinessEventWithPayload(
 			domain.EventID(id),
 			domain.ID(storedAggregate),
 			domain.EventType(eventType),
@@ -139,6 +144,7 @@ func (r *EventLogRepository) ListByAggregate(
 			aggregateVersion,
 			correlationID,
 			domain.EventID(causationID),
+			payload,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("restore event %q: %w", id, err)

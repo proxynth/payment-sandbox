@@ -23,6 +23,7 @@ type BusinessEvent struct {
 	aggregateVersion uint64
 	correlationID    string
 	causationID      EventID
+	payload          []byte
 }
 
 func NewBusinessEvent(
@@ -34,6 +35,19 @@ func NewBusinessEvent(
 	correlationID string,
 	causationID EventID,
 ) (BusinessEvent, error) {
+	return NewBusinessEventWithPayload(id, aggregateID, eventType, occurredAt, aggregateVersion, correlationID, causationID, nil)
+}
+
+func NewBusinessEventWithPayload(
+	id EventID,
+	aggregateID ID,
+	eventType EventType,
+	occurredAt time.Time,
+	aggregateVersion uint64,
+	correlationID string,
+	causationID EventID,
+	payload []byte,
+) (BusinessEvent, error) {
 	event := BusinessEvent{
 		id:               id,
 		aggregateID:      aggregateID,
@@ -42,6 +56,7 @@ func NewBusinessEvent(
 		aggregateVersion: aggregateVersion,
 		correlationID:    correlationID,
 		causationID:      causationID,
+		payload:          cloneEventPayload(payload),
 	}
 	if err := event.Validate(); err != nil {
 		return BusinessEvent{}, err
@@ -114,4 +129,15 @@ func (e BusinessEvent) CorrelationID() string {
 
 func (e BusinessEvent) CausationID() EventID {
 	return e.causationID
+}
+
+func (e BusinessEvent) Payload() []byte {
+	return cloneEventPayload(e.payload)
+}
+
+func cloneEventPayload(payload []byte) []byte {
+	if payload == nil {
+		return []byte{}
+	}
+	return append([]byte(nil), payload...)
 }

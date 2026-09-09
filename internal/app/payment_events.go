@@ -66,7 +66,15 @@ func (p *paymentEventPublisher) Publish(ctx context.Context, payment *paymentdom
 			causationVersion = candidate.AggregateVersion()
 		}
 	}
-	event, err := paymentdomain.NewBusinessEvent(eventID, payment.ID(), eventType, at, payment.Version(), metadata.CorrelationID, causationID)
+	eventPayload, err := json.Marshal(paymentEventPayload{
+		PaymentID: payment.ID(), Amount: payment.Amount().Amount(), Currency: payment.Amount().Currency(),
+		AuthorizedAmount: payment.AuthorizedAmount().Amount(), CapturedAmount: payment.CapturedAmount().Amount(),
+		RefundedAmount: payment.RefundedAmount().Amount(), Status: payment.Status(), Version: payment.Version(),
+	})
+	if err != nil {
+		return fmt.Errorf("encode payment event payload: %w", err)
+	}
+	event, err := paymentdomain.NewBusinessEventWithPayload(eventID, payment.ID(), eventType, at, payment.Version(), metadata.CorrelationID, causationID, eventPayload)
 	if err != nil {
 		return err
 	}
@@ -132,4 +140,15 @@ type paymentWebhookEvent struct {
 	OccurredAt    time.Time               `json:"occurred_at"`
 	CorrelationID string                  `json:"correlation_id"`
 	CausationID   paymentdomain.EventID   `json:"causation_id"`
+}
+
+type paymentEventPayload struct {
+	PaymentID        paymentdomain.ID       `json:"payment_id"`
+	Amount           int64                  `json:"amount"`
+	Currency         paymentdomain.Currency `json:"currency"`
+	AuthorizedAmount int64                  `json:"authorized_amount"`
+	CapturedAmount   int64                  `json:"captured_amount"`
+	RefundedAmount   int64                  `json:"refunded_amount"`
+	Status           paymentdomain.Status   `json:"status"`
+	Version          uint64                 `json:"version"`
 }
