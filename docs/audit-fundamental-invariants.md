@@ -8,6 +8,7 @@
 - Branche de correction : `audit/fundamental-invariants`
 - Go : 1.25.7
 - Persistance exercée : SQLite migré jusqu'à la version 13
+- Dernier commit d'audit publié : `50942ad8dd9df67c87f715ecbd7fcf3b15d3008b`
 
 Les commandes exécutées après corrections sont `go test ./...`, `go test -race ./...` et `go vet ./...`. Elles passent toutes.
 
@@ -35,6 +36,7 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 | Une Saga reprend après mutation paiement et échec de sauvegarde | `TestAuditSagaRecoversAfterPaymentCommit` | garanti pour les étapes reconnues comme déjà appliquées |
 | Endpoint, scénario et temps virtuel survivent au redémarrage | `TestAuditRuntimeRestartPreservesControlState` | garanti |
 | Un replay de scénario est isolé et reproductible | tests du runner, scénarios et comparaison | garanti dans le périmètre du runner |
+| L'historique runtime global est consultable sans effet de bord | `RuntimeHistory`, `ListAuditByAggregate`, test de reconstruction | garanti pour les événements/jobs créés avec causalité persistée |
 
 ## Écarts corrigés
 
@@ -44,6 +46,17 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 4. Une nouvelle livraison de message Saga après un commit paiement pouvait rejouer une transition invalide. L'exécuteur reconnaît un état déjà atteint.
 5. Les contrôles du runtime étaient purement mémoire. La migration 9 les rend durables.
 6. Les tentatives webhook ne conservaient pas leur résultat protocolaire. La migration 11 enregistre, pour chaque paire `(job_id, tentative)`, le endpoint, la corrélation, le statut HTTP ou l'erreur de transport, sans persister les corps.
+7. Il manquait une vue de corrélation entre événement métier, cycle du job et livraison webhook. La migration 13 persiste `aggregate_id`/`causation_id` et l'administration expose `GET /admin/runtime-history/payments/{paymentId}` en lecture seule.
+
+## Findings adversariaux
+
+| Gravité | Finding | Preuve / impact | Correction ou limite |
+| --- | --- | --- | --- |
+| Medium | Les jobs antérieurs à la migration 13 ne sont pas causalement rattachables de façon fiable | Le schéma historique ne contenait pas ces colonnes ; une reconstruction globale peut donc omettre ces jobs | Limite explicitement exposée ; migration des nouvelles écritures, pas de fausse rétro-inférence |
+| Medium | La livraison HTTP reste at-least-once | Crash possible après succès distant et avant l'accusé durable ; doublon externe possible | Marqueur `started`, résultat terminal et idempotence côté destinataire recommandée |
+| Low | L'endpoint runtime history ne restitue pas les payloads de jobs | Diagnostic fonctionnel limité si le payload est nécessaire pour comprendre un cas précis | Choix de minimisation des données ; les événements et métadonnées causales restent consultables |
+
+Les trois points ci-dessus sont des limites ou risques démontrés, pas des défaillances silencieuses découvertes après la correction. Aucun double paiement n'a été reproduit sur les chemins testés.
 
 ## Limites résiduelles
 
@@ -59,3 +72,5 @@ Les propriétés qui étaient seulement déclarées au commit initial ne le sont
 Le déterminisme est réel pour les scénarios de replay et leurs résultats métier, ainsi que pour les métadonnées de corrélation des requêtes runtime équivalentes. L'audit couvre les transitions internes des jobs et le résultat de chaque livraison webhook. Une livraison externe demeure naturellement *at-least-once* : après un crash, le journal permet de diagnostiquer un doublon potentiel mais ne peut pas transformer HTTP en exactly-once.
 
 L'audit de livraison est consultable avec le jeton d'administration via `GET /admin/webhook-jobs/{jobId}/deliveries`. La réponse expose l'identité de la tentative, le endpoint, les corrélations, le résultat, le statut HTTP et l'erreur éventuelle, sans exposer les corps de callback.
+
+La vue consolidée est consultable avec le même jeton via `GET /admin/runtime-history/payments/{paymentId}`. Elle reconstruit l'état du paiement depuis l'event log et joint les snapshots de jobs et les tentatives webhook par causalité persistée ; elle n'exécute aucun handler et n'effectue aucun appel réseau.
