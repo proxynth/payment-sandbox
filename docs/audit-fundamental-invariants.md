@@ -103,8 +103,8 @@ fermer le curseur avant de charger les snapshots, et respecter la transaction
   une réponse peut mélanger des états observés à des instants différents si un
   worker ou une commande écrit entre les requêtes. Risque issu du code, non
   reproduit par un test concurrent à ce stade.
-- Les tests HTTP dédiés à runtime-history, dont la non-exposition des payloads,
-  restent à ajouter. L'absence de champ payload dans le DTO est un constat de code.
+- Un test HTTP dédié vérifie le statut, la reconstruction et la non-exposition des
+  payloads dans la réponse ; il ne couvre pas encore une lecture concurrente réelle.
 - L'ordre des snapshots est calculé à partir des tentatives, dates et statuts ;
   ce n'est pas une séquence persistée prouvant l'ordre réel de toutes les mutations.
 
