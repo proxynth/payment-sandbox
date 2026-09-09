@@ -115,5 +115,5 @@ Validation de cette contre-vérification : `go test ./...`, `go test -race ./...
 et `go vet ./...` terminent avec succès. `make check` passe tidy, build et tests,
 puis échoue sur `golangci-lint` absent ; `make fmt` échoue également à cette étape
 après gofmt. Le contrôle obligatoire de lint reste donc non validé. Le correctif
-et ce complément de rapport sont maintenant prêts à être commités sur la branche
-d'audit après revue du diff.
+et ce complément de rapport sont commités sur la branche d'audit ; le commit a
+été publié après validation des tests disponibles.
