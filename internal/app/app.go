@@ -30,14 +30,14 @@ import (
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	"proxynth/payment-sandbox/internal/provider/fake"
 	"proxynth/payment-sandbox/internal/provider/stripe"
-	replaymemory "proxynth/payment-sandbox/internal/replay/adapters/memory"
+	replaysqlite "proxynth/payment-sandbox/internal/replay/adapters/sqlite"
 	replayapplication "proxynth/payment-sandbox/internal/replay/application"
 	schedulersqlite "proxynth/payment-sandbox/internal/scheduler/adapters/sqlite"
 	schedulerapplication "proxynth/payment-sandbox/internal/scheduler/application"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 	webhookclient "proxynth/payment-sandbox/internal/webhook/adapters/client"
 	webhookhttp "proxynth/payment-sandbox/internal/webhook/adapters/http"
-	webhookmemory "proxynth/payment-sandbox/internal/webhook/adapters/memory"
+	webhooksqlite "proxynth/payment-sandbox/internal/webhook/adapters/sqlite"
 	webhookapplication "proxynth/payment-sandbox/internal/webhook/application"
 )
 
@@ -106,9 +106,9 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 
 	payments := paymentsqlite.NewRepository(database)
 	events := paymentsqlite.NewEventLogRepository(database)
-	webhooks := webhookmemory.NewRepository()
-	scenarios := replaymemory.NewRepository()
-	virtualClock, err := clock.NewVirtualClock(time.Now())
+	webhooks := webhooksqlite.NewRepository(database)
+	scenarios := replaysqlite.NewRepository(database)
+	virtualClock, err := clock.NewPersistentVirtualClock(time.Now(), sqlite.NewRuntimeStateStore(database), "business_virtual_time")
 	if err != nil {
 		return nil, fmt.Errorf("create virtual clock: %w", err)
 	}
