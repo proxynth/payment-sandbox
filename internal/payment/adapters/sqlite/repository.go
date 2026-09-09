@@ -31,6 +31,17 @@ type Repository struct {
 	db executor
 }
 
+func (r *Repository) WithinContext(ctx context.Context, fn func(context.Context) error) error {
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		return fn(ctx)
+	}
+	db, ok := r.db.(*sql.DB)
+	if !ok {
+		return fn(ctx)
+	}
+	return persistencesqlite.NewTransactionManager(db).WithinContext(ctx, fn)
+}
+
 func NewRepository(db executor) *Repository {
 	return &Repository{db: db}
 }

@@ -29,6 +29,12 @@ func (c *AuthorizePayment) Execute(
 	ctx context.Context,
 	command AuthorizePaymentCommand,
 ) (*domain.Payment, error) {
+	var result *domain.Payment
+	err := withinRepositoryTransaction(ctx, c.repository, func(txctx context.Context) error { var err error; result, err = c.execute(txctx, command); return err })
+	return result, err
+}
+
+func (c *AuthorizePayment) execute(ctx context.Context, command AuthorizePaymentCommand) (*domain.Payment, error) {
 	payment, err := c.repository.FindByID(
 		ctx,
 		command.PaymentID,
