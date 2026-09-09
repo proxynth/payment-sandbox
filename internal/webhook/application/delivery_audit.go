@@ -10,6 +10,9 @@ import (
 type DeliveryOutcome string
 
 const (
+	// DeliveryStarted means the attempt was durably recorded before the HTTP call.
+	// Its terminal result is unknown until it is replaced by a final outcome.
+	DeliveryStarted   DeliveryOutcome = "started"
 	DeliverySucceeded DeliveryOutcome = "succeeded"
 	DeliveryFailed    DeliveryOutcome = "failed"
 )

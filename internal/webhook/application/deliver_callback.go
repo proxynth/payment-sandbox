@@ -87,6 +87,9 @@ func (d *OutboundCallback) Execute(ctx context.Context, payload []byte) error {
 	if err != nil {
 		return err
 	}
+	if err := d.start(ctx, delivery); err != nil {
+		return err
+	}
 
 	endpoint, err := d.repository.FindByID(ctx, delivery.EndpointID)
 	if err != nil {
@@ -132,22 +135,7 @@ func (d *OutboundCallback) finish(ctx context.Context, delivery DeliveryPayload,
 		return executionErr
 	}
 
-	metadata, ok := schedulerdomain.ExecutionMetadataFromContext(ctx)
-	jobID := "direct:" + string(delivery.CausationID)
-	attempt := uint64(0)
-	if ok {
-		jobID = string(metadata.JobID)
-		attempt = metadata.Attempt
-	}
-	attemptRecord := DeliveryAttempt{
-		JobID:         jobID,
-		Attempt:       attempt,
-		EndpointID:    delivery.EndpointID,
-		CorrelationID: delivery.CorrelationID,
-		CausationID:   delivery.CausationID,
-		Outcome:       outcome,
-		HTTPStatus:    status,
-	}
+	attemptRecord := d.newAttempt(ctx, delivery, outcome, status)
 	if executionErr != nil {
 		attemptRecord.Error = executionErr.Error()
 	}
@@ -158,6 +146,35 @@ func (d *OutboundCallback) finish(ctx context.Context, delivery DeliveryPayload,
 		return fmt.Errorf("record webhook delivery audit: %w", err)
 	}
 	return executionErr
+}
+
+func (d *OutboundCallback) start(ctx context.Context, delivery DeliveryPayload) error {
+	if d.audit == nil {
+		return nil
+	}
+	if err := d.audit.Record(ctx, d.newAttempt(ctx, delivery, DeliveryStarted, 0)); err != nil {
+		return fmt.Errorf("record webhook delivery attempt: %w", err)
+	}
+	return nil
+}
+
+func (d *OutboundCallback) newAttempt(ctx context.Context, delivery DeliveryPayload, outcome DeliveryOutcome, status int) DeliveryAttempt {
+	metadata, ok := schedulerdomain.ExecutionMetadataFromContext(ctx)
+	jobID := "direct:" + string(delivery.CausationID)
+	attempt := uint64(0)
+	if ok {
+		jobID = string(metadata.JobID)
+		attempt = metadata.Attempt
+	}
+	return DeliveryAttempt{
+		JobID:         jobID,
+		Attempt:       attempt,
+		EndpointID:    delivery.EndpointID,
+		CorrelationID: delivery.CorrelationID,
+		CausationID:   delivery.CausationID,
+		Outcome:       outcome,
+		HTTPStatus:    status,
+	}
 }
 
 func decodeDeliveryPayload(payload []byte) (DeliveryPayload, error) {

@@ -38,6 +38,7 @@ import (
 	sa "proxynth/payment-sandbox/internal/scheduler/application"
 	sd "proxynth/payment-sandbox/internal/scheduler/domain"
 	whm "proxynth/payment-sandbox/internal/webhook/adapters/memory"
+	whs "proxynth/payment-sandbox/internal/webhook/adapters/sqlite"
 	wha "proxynth/payment-sandbox/internal/webhook/application"
 	whd "proxynth/payment-sandbox/internal/webhook/domain"
 )
@@ -639,6 +640,185 @@ func TestAuditWebhookDeliveryCharacterization(t *testing.T) {
 		t.Fatalf("calls=%d", client.calls.Load())
 	}
 	t.Log("same event delivered twice through fake client; consumer deduplication is required")
+}
+
+// Invariant: if the process dies after an accepted callback but before it can
+// mark the job completed, lease recovery causes a second at-least-once
+// delivery and leaves one durable audit result for each attempt.
+func TestAuditWebhookCrashAfterSuccessBeforeCompletionIsTraceable(t *testing.T) {
+	db := auditDB(t)
+	endpoints := whs.NewRepository(db)
+	endpoint, err := whd.NewEndpoint("endpoint-1", "https://example.test/hooks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := endpoints.Save(auditContext(), endpoint); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := wha.NewDeliveryPayload(endpoint.ID(), []byte(`{"event":"payment.authorized"}`), "request-1", "event-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := sd.NewJob("webhook-job-1", wha.DeliveryJobType, payload, auditAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := ss.NewRepository(db)
+	if err := jobs.Save(auditContext(), &job); err != nil {
+		t.Fatal(err)
+	}
+	first, err := jobs.Acquire(auditContext(), job.ID(), "first-worker", auditAt.Add(time.Minute), auditAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &auditHTTPClient{}
+	callback, err := wha.NewOutboundCallbackWithAudit(endpoints, client, whs.NewDeliveryAuditRepository(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstWorker, err := sa.NewWorker(&auditFailCompletedSaveRepository{inner: jobs}, map[sd.JobType]sa.JobHandler{wha.DeliveryJobType: callback.Execute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := firstWorker.Execute(auditContext(), first); err == nil {
+		t.Fatal("first worker unexpectedly completed after injected completion persistence failure")
+	}
+
+	secondCandidates, err := jobs.FindExecutable(auditContext(), auditAt.Add(time.Minute), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secondCandidates) != 1 {
+		t.Fatalf("recovered candidates = %d, want 1", len(secondCandidates))
+	}
+	second, err := jobs.Acquire(auditContext(), job.ID(), "second-worker", auditAt.Add(2*time.Minute), auditAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondWorker, err := sa.NewWorker(jobs, map[sd.JobType]sa.JobHandler{wha.DeliveryJobType: callback.Execute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secondWorker.Execute(auditContext(), second); err != nil {
+		t.Fatal(err)
+	}
+
+	if client.calls.Load() != 2 {
+		t.Fatalf("callback deliveries = %d, want 2 after crash window", client.calls.Load())
+	}
+	rows, err := db.Query(`SELECT attempt, outcome, http_status FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, job.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var recorded []int
+	for rows.Next() {
+		var attempt, status int
+		var outcome string
+		if err := rows.Scan(&attempt, &outcome, &status); err != nil {
+			t.Fatal(err)
+		}
+		if outcome != string(wha.DeliverySucceeded) || status != http.StatusOK {
+			t.Fatalf("audit outcome attempt %d = %q/%d", attempt, outcome, status)
+		}
+		recorded = append(recorded, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(recorded, []int{1, 2}) {
+		t.Fatalf("recorded webhook attempts = %v, want [1 2]", recorded)
+	}
+}
+
+// Invariant: failure to write a terminal audit result prevents a callback from
+// being silently forgotten. The durable start marker remains, and a retry gets
+// its own terminal result after audit persistence recovers.
+func TestAuditWebhookAuditWriteFailureLeavesUnknownAttemptTrace(t *testing.T) {
+	db := auditDB(t)
+	endpoints := whs.NewRepository(db)
+	endpoint, err := whd.NewEndpoint("endpoint-1", "https://example.test/hooks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := endpoints.Save(auditContext(), endpoint); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := wha.NewDeliveryPayload(endpoint.ID(), []byte(`{"event":"payment.authorized"}`), "request-1", "event-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := sd.NewJob("webhook-job-audit-failure", wha.DeliveryJobType, payload, auditAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := ss.NewRepository(db)
+	if err := jobs.Save(auditContext(), &job); err != nil {
+		t.Fatal(err)
+	}
+	first, err := jobs.Acquire(auditContext(), job.ID(), "first-worker", auditAt.Add(time.Minute), auditAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &auditHTTPClient{}
+	callback, err := wha.NewOutboundCallbackWithAudit(endpoints, client, whs.NewDeliveryAuditRepository(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := sa.NewWorker(jobs, map[sd.JobType]sa.JobHandler{wha.DeliveryJobType: callback.Execute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditExec(t, db, `CREATE TRIGGER audit_fail_webhook_result BEFORE UPDATE ON webhook_delivery_audit BEGIN SELECT RAISE(ABORT,'injected audit write failure'); END`)
+	if err := worker.Execute(auditContext(), first); err == nil {
+		t.Fatal("worker unexpectedly completed despite terminal audit failure")
+	}
+	auditExec(t, db, `DROP TRIGGER audit_fail_webhook_result`)
+
+	second, err := jobs.Acquire(auditContext(), job.ID(), "second-worker", auditAt.Add(2*time.Minute), auditAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.Execute(auditContext(), second); err != nil {
+		t.Fatal(err)
+	}
+	if client.calls.Load() != 2 {
+		t.Fatalf("callback deliveries = %d, want retry after audit failure", client.calls.Load())
+	}
+	rows, err := db.Query(`SELECT attempt, outcome FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, job.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var recorded []string
+	for rows.Next() {
+		var attempt int
+		var outcome string
+		if err := rows.Scan(&attempt, &outcome); err != nil {
+			t.Fatal(err)
+		}
+		recorded = append(recorded, fmt.Sprintf("%d:%s", attempt, outcome))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(recorded, []string{"1:started", "2:succeeded"}) {
+		t.Fatalf("webhook audit trail = %v, want [1:started 2:succeeded]", recorded)
+	}
+}
+
+type auditFailCompletedSaveRepository struct {
+	inner  sa.WorkerRepository
+	failed bool
+}
+
+func (r *auditFailCompletedSaveRepository) Save(ctx context.Context, job *sd.Job) error {
+	if job.Status() == sd.JobCompleted && !r.failed {
+		r.failed = true
+		return errors.New("injected crash before completed job persistence")
+	}
+	return r.inner.Save(ctx, job)
 }
 
 // Positive control: monetary optimistic concurrency rejects a stale competing transition.

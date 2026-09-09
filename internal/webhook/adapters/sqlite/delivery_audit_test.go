@@ -24,14 +24,21 @@ func TestDeliveryAuditRepositoryPersistsOneRecordPerJobAttempt(t *testing.T) {
 	}
 
 	repository := NewDeliveryAuditRepository(db)
-	attempt := application.DeliveryAttempt{
+	started := application.DeliveryAttempt{
 		JobID: "job-1", Attempt: 1, EndpointID: "endpoint-1", CorrelationID: "request-1", CausationID: "event-1",
-		Outcome: application.DeliveryFailed, HTTPStatus: 502, Error: "callback delivery failed: unexpected HTTP status 502",
+		Outcome: application.DeliveryStarted,
 	}
-	if err := repository.Record(context.Background(), attempt); err != nil {
+	if err := repository.Record(context.Background(), started); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.Record(context.Background(), attempt); err != nil {
+	failed := started
+	failed.Outcome = application.DeliveryFailed
+	failed.HTTPStatus = 502
+	failed.Error = "callback delivery failed: unexpected HTTP status 502"
+	if err := repository.Record(context.Background(), failed); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Record(context.Background(), started); err != nil {
 		t.Fatal(err)
 	}
 
@@ -40,7 +47,7 @@ func TestDeliveryAuditRepositoryPersistsOneRecordPerJobAttempt(t *testing.T) {
 	if err := db.QueryRow(`SELECT attempt, http_status, outcome, error FROM webhook_delivery_audit WHERE job_id = ?`, "job-1").Scan(&attempts, &status, &outcome, &recordedErr); err != nil {
 		t.Fatal(err)
 	}
-	if attempts != 1 || status != 502 || outcome != string(application.DeliveryFailed) || recordedErr != attempt.Error {
+	if attempts != 1 || status != 502 || outcome != string(application.DeliveryFailed) || recordedErr != failed.Error {
 		t.Fatalf("persisted audit = attempt=%d status=%d outcome=%q error=%q", attempts, status, outcome, recordedErr)
 	}
 }

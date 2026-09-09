@@ -142,10 +142,13 @@ func TestOutboundCallbackRecordsSchedulerAttemptOutcome(t *testing.T) {
 	if err := delivery.Execute(ctx, payload); !errors.Is(err, ErrCallbackDeliveryFailed) {
 		t.Fatalf("Execute() error = %v, want callback failure", err)
 	}
-	if len(audit.attempts) != 1 {
-		t.Fatalf("audit records = %d, want 1", len(audit.attempts))
+	if len(audit.attempts) != 2 {
+		t.Fatalf("audit records = %d, want start then result", len(audit.attempts))
 	}
-	got := audit.attempts[0]
+	if audit.attempts[0].Outcome != DeliveryStarted {
+		t.Fatalf("first audit record = %#v, want start marker", audit.attempts[0])
+	}
+	got := audit.attempts[1]
 	if got.JobID != "job-9" || got.Attempt != 2 || got.EndpointID != endpoint.ID() || got.CorrelationID != "request-1" || got.CausationID != "event-3" {
 		t.Fatalf("audit identity = %#v", got)
 	}
@@ -170,10 +173,13 @@ func TestOutboundCallbackRecordsSuccessfulOutcome(t *testing.T) {
 	if err := delivery.Execute(context.Background(), payload); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if len(audit.attempts) != 1 {
-		t.Fatalf("audit records = %d, want 1", len(audit.attempts))
+	if len(audit.attempts) != 2 {
+		t.Fatalf("audit records = %d, want start then result", len(audit.attempts))
 	}
-	got := audit.attempts[0]
+	if audit.attempts[0].Outcome != DeliveryStarted {
+		t.Fatalf("first audit record = %#v, want start marker", audit.attempts[0])
+	}
+	got := audit.attempts[1]
 	if got.Outcome != DeliverySucceeded || got.HTTPStatus != http.StatusNoContent || got.Error != "" || got.JobID != "direct:" {
 		t.Fatalf("audit result = %#v", got)
 	}
