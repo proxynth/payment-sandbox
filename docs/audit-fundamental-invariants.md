@@ -55,3 +55,5 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 Les propriétés qui étaient seulement déclarées au commit initial ne le sont plus toutes : les chemins transactionnels, l'idempotence HTTP, les retries, la concurrence de job, la persistance du contrôle runtime et les snapshots d'événements sont maintenant couverts par des tests exécutés.
 
 Le déterminisme est réel pour les scénarios de replay et leurs résultats métier, ainsi que pour les métadonnées de corrélation des requêtes runtime équivalentes. L'audit couvre les transitions internes des jobs et le résultat de chaque livraison webhook. Une livraison externe demeure naturellement *at-least-once* : après un crash, le journal permet de diagnostiquer un doublon potentiel mais ne peut pas transformer HTTP en exactly-once.
+
+L'audit de livraison est consultable avec le jeton d'administration via `GET /admin/webhook-jobs/{jobId}/deliveries`. La réponse expose l'identité de la tentative, le endpoint, les corrélations, le résultat, le statut HTTP et l'erreur éventuelle, sans exposer les corps de callback.

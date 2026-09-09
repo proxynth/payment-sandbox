@@ -39,6 +39,7 @@ func TestOpenAPIContractIsValidAndCoversRegisteredRoutes(t *testing.T) {
 		"/admin/scenarios/{scenarioId}/execute":   {"post"},
 		"/admin/payments/{paymentId}/timeline":    {"get"},
 		"/admin/diagnostics/payments/{paymentId}": {"get"},
+		"/admin/webhook-jobs/{jobId}/deliveries": {"get"},
 	}
 	for route, methods := range wants {
 		for _, method := range methods {

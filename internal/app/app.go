@@ -200,6 +200,10 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create diagnostics handler: %w", err)
 	}
+	webhookAuditHandler, err := administrationhttp.NewWebhookAuditHandler(webhooksqlite.NewDeliveryAuditRepository(database))
+	if err != nil {
+		return nil, fmt.Errorf("create webhook audit handler: %w", err)
+	}
 
 	registrations := []struct {
 		name     string
@@ -211,6 +215,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		{"scenario", func() error { return scenarioHandler.Register(server, cfg.Admin.Token) }},
 		{"timeline", func() error { return timelineHandler.Register(server, cfg.Admin.Token) }},
 		{"diagnostics", func() error { return diagnosticsHandler.Register(server, cfg.Admin.Token) }},
+		{"webhook audit", func() error { return webhookAuditHandler.Register(server, cfg.Admin.Token) }},
 	}
 	for _, registration := range registrations {
 		if err := registration.register(); err != nil {

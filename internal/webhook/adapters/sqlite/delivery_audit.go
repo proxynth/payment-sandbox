@@ -51,6 +51,36 @@ func (r *DeliveryAuditRepository) Record(ctx context.Context, attempt applicatio
 	return nil
 }
 
+// ListByJob returns the immutable audit trail for one durable delivery job.
+func (r *DeliveryAuditRepository) ListByJob(ctx context.Context, jobID string) ([]application.DeliveryAttempt, error) {
+	if jobID == "" {
+		return nil, fmt.Errorf("webhook delivery audit job ID is required")
+	}
+	rows, err := r.executor(ctx).QueryContext(ctx, `
+		SELECT attempt, endpoint_id, correlation_id, causation_id, outcome, http_status, error
+		FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("list webhook delivery audit for job %q: %w", jobID, err)
+	}
+	defer rows.Close()
+
+	attempts := make([]application.DeliveryAttempt, 0)
+	for rows.Next() {
+		var attempt application.DeliveryAttempt
+		var number uint64
+		if err := rows.Scan(&number, &attempt.EndpointID, &attempt.CorrelationID, &attempt.CausationID, &attempt.Outcome, &attempt.HTTPStatus, &attempt.Error); err != nil {
+			return nil, fmt.Errorf("scan webhook delivery audit for job %q: %w", jobID, err)
+		}
+		attempt.JobID = jobID
+		attempt.Attempt = number
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list webhook delivery audit for job %q: %w", jobID, err)
+	}
+	return attempts, nil
+}
+
 func (r *DeliveryAuditRepository) executor(ctx context.Context) executor {
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		return tx
