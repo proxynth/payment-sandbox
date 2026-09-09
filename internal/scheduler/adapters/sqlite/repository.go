@@ -164,17 +164,31 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 // ListAuditByAggregate returns all job lifecycle snapshots causally linked to
 // one business aggregate, ordered by job and lifecycle order.
 func (r *Repository) ListAuditByAggregate(ctx context.Context, aggregateID string) ([]domain.JobSnapshot, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT job_id FROM scheduler_job_audit WHERE aggregate_id = ? ORDER BY job_id`, aggregateID)
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	rows, err := exec.QueryContext(ctx, `SELECT DISTINCT job_id FROM scheduler_job_audit WHERE aggregate_id = ? ORDER BY job_id`, aggregateID)
 	if err != nil {
 		return nil, fmt.Errorf("list scheduler jobs for aggregate %q: %w", aggregateID, err)
 	}
 	defer rows.Close()
-	var result []domain.JobSnapshot
+	var ids []string
 	for rows.Next() {
 		var jobID string
 		if err := rows.Scan(&jobID); err != nil {
 			return nil, err
 		}
+		ids = append(ids, jobID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	var result []domain.JobSnapshot
+	for _, jobID := range ids {
 		snapshots, err := r.ListAudit(ctx, domain.JobID(jobID))
 		if err != nil {
 			return nil, err

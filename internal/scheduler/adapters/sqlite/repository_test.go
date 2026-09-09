@@ -109,3 +109,33 @@ func TestRepositoryAuditSnapshotsRestoreCompletedJob(t *testing.T) {
 		t.Fatalf("restored job = %#v", restored)
 	}
 }
+
+// Invariant: aggregate history releases its cursor before reading individual
+// job histories on the runtime's single-connection SQLite pool.
+func TestAggregateHistoryWithSingleConnection(t *testing.T) {
+	db, err := persistencesqlite.Open(context.Background(), config.DatabaseConfig{Path: t.TempDir() + "/history.db", BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := migrations.Up(db); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(db)
+	job, err := domain.NewJob("history-job", "saga.step", []byte(`{}`), time.Unix(1, 0), domain.JobMetadata{AggregateID: "payment-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), &job); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	snapshots, err := repo.ListAuditByAggregate(ctx, "payment-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) != 1 || snapshots[0].ID != job.ID() {
+		t.Fatalf("snapshots=%+v", snapshots)
+	}
+}

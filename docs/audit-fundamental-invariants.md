@@ -22,21 +22,21 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 
 | Invariant | Preuve exécutée | État |
 | --- | --- | --- |
-| Une commande HTTP idempotente ne produit qu'un effet | tests HTTP d'idempotence et table SQLite durable | garanti pour les routes couvertes |
-| Paiement, événement et jobs webhook sont atomiques | tests de crash et d'échec de publication | garanti pour les transitions de paiement |
-| Un job échoué peut être repris | `TestAuditFailedJobCanRetry` | garanti |
-| Le cycle des jobs est conservé et restaurable | snapshots append-only `scheduler_job_audit` et test SQLite | garanti pour les snapshots créés après migration 12 |
-| Un job est relié à sa cause métier | métadonnées `aggregate_id` / `causation_id` persistées | garanti pour les nouveaux jobs créés après migration 13 |
-| Chaque tentative webhook laisse une trace durable | `webhook_delivery_audit`, tests applicatifs et SQLite | garanti : résultat final ou marqueur `started` au résultat inconnu |
-| Un crash après succès HTTP rend le doublon visible | `TestAuditWebhookCrashAfterSuccessBeforeCompletionIsTraceable` | garanti, livraison externe at-least-once |
-| Deux workers n'obtiennent pas le même job | `TestAuditConcurrentAcquisitionHasOneWinner` et `-race` | garanti par acquisition SQL conditionnelle |
-| Les leases expirés sont récupérés | `TestAuditExpiredJobsAreDiscovered` | garanti |
-| L'event log distingue les états monétaires | `TestAuditEventLogDistinguishesAmounts` | garanti pour les nouveaux événements |
-| L'event log reconstruit l'état courant | `TestAuditEventLogReconstructsCurrentPaymentState` | garanti pour les nouveaux historiques complets |
-| Une Saga reprend après mutation paiement et échec de sauvegarde | `TestAuditSagaRecoversAfterPaymentCommit` | garanti pour les étapes reconnues comme déjà appliquées |
-| Endpoint, scénario et temps virtuel survivent au redémarrage | `TestAuditRuntimeRestartPreservesControlState` | garanti |
-| Un replay de scénario est isolé et reproductible | tests du runner, scénarios et comparaison | garanti dans le périmètre du runner |
-| L'historique runtime global est consultable sans effet de bord | `RuntimeHistory`, `ListAuditByAggregate`, test de reconstruction | garanti pour les événements/jobs créés avec causalité persistée |
+| Une commande HTTP idempotente ne produit qu'un effet | tests HTTP d'idempotence et table SQLite durable | vérifié dans les tests cités pour les routes couvertes |
+| Paiement, événement et jobs webhook sont atomiques | tests de crash et d'échec de publication | vérifié dans les tests cités pour les transitions de paiement |
+| Un job échoué peut être repris | `TestAuditFailedJobCanRetry` | vérifié dans les tests cités |
+| Le cycle des jobs est conservé et restaurable | snapshots append-only `scheduler_job_audit` et test SQLite | vérifié dans les tests cités pour les snapshots créés après migration 12 |
+| Un job est relié à sa cause métier | métadonnées `aggregate_id` / `causation_id` persistées | vérifié dans les tests cités pour les nouveaux jobs créés après migration 13 |
+| Chaque tentative webhook laisse une trace durable | `webhook_delivery_audit`, tests applicatifs et SQLite | vérifié dans les tests cités : résultat final ou marqueur `started` au résultat inconnu |
+| Un crash après succès HTTP rend le doublon visible | `TestAuditWebhookCrashAfterSuccessBeforeCompletionIsTraceable` | vérifié dans les tests cités, livraison externe at-least-once |
+| Deux workers n'obtiennent pas le même job | `TestAuditConcurrentAcquisitionHasOneWinner` et `-race` | vérifié dans les tests cités par acquisition SQL conditionnelle |
+| Les leases expirés sont récupérés | `TestAuditExpiredJobsAreDiscovered` | vérifié dans les tests cités |
+| L'event log distingue les états monétaires | `TestAuditEventLogDistinguishesAmounts` | vérifié dans les tests cités pour les nouveaux événements |
+| L'event log reconstruit l'état courant | `TestAuditEventLogReconstructsCurrentPaymentState` | vérifié dans les tests cités pour les nouveaux historiques complets |
+| Une Saga reprend après mutation paiement et échec de sauvegarde | `TestAuditSagaRecoversAfterPaymentCommit` | vérifié dans les tests cités pour les étapes reconnues comme déjà appliquées |
+| Endpoint, scénario et temps virtuel survivent au redémarrage | `TestAuditRuntimeRestartPreservesControlState` | vérifié dans les tests cités |
+| Un replay de scénario est isolé et reproductible | tests du runner, scénarios et comparaison | vérifié dans les tests cités dans le périmètre du runner |
+| L'historique runtime global est consultable sans effet de bord | `RuntimeHistory`, `ListAuditByAggregate`, test de reconstruction | vérifié dans les tests cités pour les événements/jobs créés avec causalité persistée |
 
 ## Écarts corrigés
 
@@ -74,3 +74,46 @@ Le déterminisme est réel pour les scénarios de replay et leurs résultats mé
 L'audit de livraison est consultable avec le jeton d'administration via `GET /admin/webhook-jobs/{jobId}/deliveries`. La réponse expose l'identité de la tentative, le endpoint, les corrélations, le résultat, le statut HTTP et l'erreur éventuelle, sans exposer les corps de callback.
 
 La vue consolidée est consultable avec le même jeton via `GET /admin/runtime-history/payments/{paymentId}`. Elle reconstruit l'état du paiement depuis l'event log et joint les snapshots de jobs et les tentatives webhook par causalité persistée ; elle n'exécute aucun handler et n'effectue aucun appel réseau.
+
+
+## Contre-vérification du 10 septembre 2026 (modifications locales)
+
+Le verdict précédent était trop affirmatif : des tests réussis ne démontrent pas
+une garantie universelle. Le test applicatif de RuntimeHistory utilise des doubles
+et vérifie essentiellement les nombres d'événements, jobs et livraisons ; il ne
+prouve ni l'isolation des agrégats, ni l'absence d'écritures SQLite, ni la cohérence
+d'une lecture concurrente.
+
+### High — Blocage de la lecture des jobs dans l'historique global
+
+Bug reproduit sur SQLite migré en version 13, avec la configuration réelle
+`SetMaxOpenConns(1)`. `ListAuditByAggregate` conserve son curseur ouvert puis
+appelle `ListAudit`, qui attend la connexion détenue par ce curseur. Avec un job
+rattaché, le test `TestAggregateHistoryWithSingleConnection` échoue avant correction
+avec `context deadline exceeded` après une seconde et réussit après correction.
+Impact : consultation de l'historique indisponible et monopolisation de l'unique
+connexion ; probabilité systématique pour ce scénario. Invariant affecté :
+accessibilité de l'audit. Correction minimale : collecter les identifiants et
+fermer le curseur avant de charger les snapshots, et respecter la transaction
+éventuellement présente dans le contexte. Aucune migration nécessaire.
+
+### Risques encore ouverts
+
+- La vue globale fait plusieurs lectures sans transaction de lecture commune :
+  une réponse peut mélanger des états observés à des instants différents si un
+  worker ou une commande écrit entre les requêtes. Risque issu du code, non
+  reproduit par un test concurrent à ce stade.
+- Les tests HTTP dédiés à runtime-history, dont la non-exposition des payloads,
+  restent à ajouter. L'absence de champ payload dans le DTO est un constat de code.
+- L'ordre des snapshots est calculé à partir des tentatives, dates et statuts ;
+  ce n'est pas une séquence persistée prouvant l'ordre réel de toutes les mutations.
+
+Ces points empêchent de conclure que l'ensemble des propriétés fondamentales
+est garanti. Les résultats positifs restent limités aux scénarios exécutés.
+
+Validation de cette contre-vérification : `go test ./...`, `go test -race ./...`
+et `go vet ./...` terminent avec succès. `make check` passe tidy, build et tests,
+puis échoue sur `golangci-lint` absent ; `make fmt` échoue également à cette étape
+après gofmt. Le contrôle obligatoire de lint reste donc non validé. Le correctif
+et ce complément de rapport sont maintenant prêts à être commités sur la branche
+d'audit après revue du diff.

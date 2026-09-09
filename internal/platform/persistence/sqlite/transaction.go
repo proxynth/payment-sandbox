@@ -12,7 +12,9 @@ type TransactionManager struct {
 
 type txContextKey struct{}
 
-func WithTx(ctx context.Context, tx *sql.Tx) context.Context { return context.WithValue(ctx, txContextKey{}, tx) }
+func WithTx(ctx context.Context, tx *sql.Tx) context.Context {
+	return context.WithValue(ctx, txContextKey{}, tx)
+}
 
 func TxFromContext(ctx context.Context) *sql.Tx {
 	tx, _ := ctx.Value(txContextKey{}).(*sql.Tx)
