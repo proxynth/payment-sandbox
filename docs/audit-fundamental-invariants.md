@@ -7,7 +7,7 @@
 - Commit initial : `c12c9f9768532ca7ca2209568982e686ebbf4ac1`
 - Branche de correction : `audit/fundamental-invariants`
 - Go : 1.25.7
-- Persistance exercée : SQLite migré jusqu'à la version 9
+- Persistance exercée : SQLite migré jusqu'à la version 11
 
 Les commandes exécutées après corrections sont `go test ./...`, `go test -race ./...` et `go vet ./...`. Elles passent toutes.
 
@@ -25,6 +25,7 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 | Paiement, événement et jobs webhook sont atomiques | tests de crash et d'échec de publication | garanti pour les transitions de paiement |
 | Un job échoué peut être repris | `TestAuditFailedJobCanRetry` | garanti |
 | Le cycle des jobs est conservé pour inspection | snapshots append-only `scheduler_job_audit` et test SQLite | garanti |
+| Chaque tentative webhook conserve son résultat observable | `webhook_delivery_audit`, tests applicatifs et SQLite | garanti pour code HTTP ou erreur de transport |
 | Deux workers n'obtiennent pas le même job | `TestAuditConcurrentAcquisitionHasOneWinner` et `-race` | garanti par acquisition SQL conditionnelle |
 | Les leases expirés sont récupérés | `TestAuditExpiredJobsAreDiscovered` | garanti |
 | L'event log distingue les états monétaires | `TestAuditEventLogDistinguishesAmounts` | garanti pour les nouveaux événements |
@@ -39,11 +40,12 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 3. L'event log ne contenait ni montant capturé ni montant remboursé. La migration 8 ajoute un payload immuable avec le snapshot métier.
 4. Une nouvelle livraison de message Saga après un commit paiement pouvait rejouer une transition invalide. L'exécuteur reconnaît un état déjà atteint.
 5. Les contrôles du runtime étaient purement mémoire. La migration 9 les rend durables.
+6. Les tentatives webhook ne conservaient pas leur résultat protocolaire. La migration 11 enregistre, pour chaque paire `(job_id, tentative)`, le endpoint, la corrélation, le statut HTTP ou l'erreur de transport, sans persister les corps.
 
 ## Limites résiduelles
 
 - Le replay reproduit les résultats métier qu'il expose, mais il ne reconstruit pas un runtime historique à partir de `event_log` et `scheduler_jobs`.
-- Le journal des jobs conserve les états et tentatives. Il ne conserve pas encore le détail protocolaire d'une livraison webhook, tel que le code HTTP distant ou le corps de réponse.
+- L'audit webhook conserve le code HTTP et l'erreur de transport, mais pas les corps de requête ou de réponse : ils peuvent contenir des données sensibles et ne sont pas nécessaires au diagnostic initial.
 - Une requête runtime sans `X-Correlation-ID` reçoit un identifiant dérivé de façon stable de sa méthode, son chemin, sa query et son corps. Le client peut toujours fournir sa propre valeur pour rattacher plusieurs requêtes à une même trace.
 - SQLite apporte l'atomicité locale testée ici. Le projet ne revendique pas de disponibilité ou de coordination multi-processus au-delà de ses verrous SQLite.
 
@@ -51,4 +53,4 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 
 Les propriétés qui étaient seulement déclarées au commit initial ne le sont plus toutes : les chemins transactionnels, l'idempotence HTTP, les retries, la concurrence de job, la persistance du contrôle runtime et les snapshots d'événements sont maintenant couverts par des tests exécutés.
 
-Le déterminisme est réel pour les scénarios de replay et leurs résultats métier, ainsi que pour les métadonnées de corrélation des requêtes runtime équivalentes. L'audit couvre désormais les transitions internes des jobs ; il reste à enrichir l'observation détaillée des livraisons webhook si ce niveau de diagnostic est requis.
+Le déterminisme est réel pour les scénarios de replay et leurs résultats métier, ainsi que pour les métadonnées de corrélation des requêtes runtime équivalentes. L'audit couvre les transitions internes des jobs et le résultat de chaque livraison webhook. Une livraison externe demeure naturellement *at-least-once* : après un crash, le journal permet de diagnostiquer un doublon potentiel mais ne peut pas transformer HTTP en exactly-once.

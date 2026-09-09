@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 	webhookdomain "proxynth/payment-sandbox/internal/webhook/domain"
 )
 
@@ -122,6 +123,62 @@ func TestOutboundCallbackMapsTransportAndHTTPFailures(t *testing.T) {
 	}
 }
 
+// Invariant: each scheduler-owned delivery attempt records its observable
+// transport outcome without retaining callback bodies.
+func TestOutboundCallbackRecordsSchedulerAttemptOutcome(t *testing.T) {
+	endpoint, _ := webhookdomain.NewEndpoint("endpoint-1", "https://example.test/hooks")
+	audit := &callbackAuditFake{}
+	delivery, err := NewOutboundCallbackWithAudit(
+		&callbackRepositoryFake{endpoint: endpoint},
+		&callbackClientFake{response: &http.Response{StatusCode: http.StatusBadGateway, Body: io.NopCloser(bytes.NewReader(nil))}},
+		audit,
+	)
+	if err != nil {
+		t.Fatalf("NewOutboundCallbackWithAudit() error = %v", err)
+	}
+	payload, _ := NewDeliveryPayload(endpoint.ID(), []byte(`{}`), "request-1", "event-3")
+	ctx := schedulerdomain.WithExecutionMetadata(context.Background(), schedulerdomain.ExecutionMetadata{JobID: "job-9", Attempt: 2})
+
+	if err := delivery.Execute(ctx, payload); !errors.Is(err, ErrCallbackDeliveryFailed) {
+		t.Fatalf("Execute() error = %v, want callback failure", err)
+	}
+	if len(audit.attempts) != 1 {
+		t.Fatalf("audit records = %d, want 1", len(audit.attempts))
+	}
+	got := audit.attempts[0]
+	if got.JobID != "job-9" || got.Attempt != 2 || got.EndpointID != endpoint.ID() || got.CorrelationID != "request-1" || got.CausationID != "event-3" {
+		t.Fatalf("audit identity = %#v", got)
+	}
+	if got.Outcome != DeliveryFailed || got.HTTPStatus != http.StatusBadGateway || got.Error == "" {
+		t.Fatalf("audit result = %#v", got)
+	}
+}
+
+func TestOutboundCallbackRecordsSuccessfulOutcome(t *testing.T) {
+	endpoint, _ := webhookdomain.NewEndpoint("endpoint-1", "https://example.test/hooks")
+	audit := &callbackAuditFake{}
+	delivery, err := NewOutboundCallbackWithAudit(
+		&callbackRepositoryFake{endpoint: endpoint},
+		&callbackClientFake{response: &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(bytes.NewReader(nil))}},
+		audit,
+	)
+	if err != nil {
+		t.Fatalf("NewOutboundCallbackWithAudit() error = %v", err)
+	}
+	payload, _ := NewDeliveryPayload(endpoint.ID(), []byte(`{}`))
+
+	if err := delivery.Execute(context.Background(), payload); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(audit.attempts) != 1 {
+		t.Fatalf("audit records = %d, want 1", len(audit.attempts))
+	}
+	got := audit.attempts[0]
+	if got.Outcome != DeliverySucceeded || got.HTTPStatus != http.StatusNoContent || got.Error != "" || got.JobID != "direct:" {
+		t.Fatalf("audit result = %#v", got)
+	}
+}
+
 func TestNewDeliveryPayloadValidatesBody(t *testing.T) {
 	if _, err := NewDeliveryPayload("endpoint-1", []byte(`not-json`)); !errors.Is(err, ErrInvalidDeliveryPayload) {
 		t.Fatalf("NewDeliveryPayload() error = %v, want %v", err, ErrInvalidDeliveryPayload)
@@ -152,6 +209,16 @@ type callbackClientFake struct {
 	response   *http.Response
 	request    *http.Request
 	bodyClosed bool
+}
+
+type callbackAuditFake struct {
+	attempts []DeliveryAttempt
+	err      error
+}
+
+func (a *callbackAuditFake) Record(_ context.Context, attempt DeliveryAttempt) error {
+	a.attempts = append(a.attempts, attempt)
+	return a.err
 }
 
 func (c *callbackClientFake) Do(request *http.Request) (*http.Response, error) {

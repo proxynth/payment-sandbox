@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 
+	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 	webhookdomain "proxynth/payment-sandbox/internal/webhook/domain"
 )
 
@@ -52,6 +53,7 @@ type HTTPClient interface {
 type OutboundCallback struct {
 	repository Repository
 	client     HTTPClient
+	audit      DeliveryAudit
 }
 
 func NewOutboundCallback(repository Repository, client HTTPClient) (*OutboundCallback, error) {
@@ -62,7 +64,20 @@ func NewOutboundCallback(repository Repository, client HTTPClient) (*OutboundCal
 		return nil, ErrInvalidHTTPClient
 	}
 
-	return &OutboundCallback{repository: repository, client: client}, nil
+	return NewOutboundCallbackWithAudit(repository, client, nil)
+}
+
+// NewOutboundCallbackWithAudit creates a callback handler that records each
+// completed transport attempt when audit is provided.
+func NewOutboundCallbackWithAudit(repository Repository, client HTTPClient, audit DeliveryAudit) (*OutboundCallback, error) {
+	if repository == nil {
+		return nil, ErrInvalidRepository
+	}
+	if client == nil {
+		return nil, ErrInvalidHTTPClient
+	}
+
+	return &OutboundCallback{repository: repository, client: client, audit: audit}, nil
 }
 
 // Execute handles one DeliveryJobType payload. It does not retry or persist
@@ -75,15 +90,15 @@ func (d *OutboundCallback) Execute(ctx context.Context, payload []byte) error {
 
 	endpoint, err := d.repository.FindByID(ctx, delivery.EndpointID)
 	if err != nil {
-		return err
+		return d.finish(ctx, delivery, DeliveryFailed, 0, err)
 	}
 	if endpoint == nil {
-		return ErrEndpointNotFound
+		return d.finish(ctx, delivery, DeliveryFailed, 0, ErrEndpointNotFound)
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.URL(), bytes.NewReader(delivery.Body))
 	if err != nil {
-		return fmt.Errorf("%w: create request: %w", ErrCallbackDeliveryFailed, err)
+		return d.finish(ctx, delivery, DeliveryFailed, 0, fmt.Errorf("%w: create request: %w", ErrCallbackDeliveryFailed, err))
 	}
 	request.Header.Set("Content-Type", "application/json")
 	if delivery.CorrelationID != "" {
@@ -95,21 +110,54 @@ func (d *OutboundCallback) Execute(ctx context.Context, payload []byte) error {
 
 	response, err := d.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrCallbackDeliveryFailed, err)
+		return d.finish(ctx, delivery, DeliveryFailed, 0, fmt.Errorf("%w: %w", ErrCallbackDeliveryFailed, err))
 	}
 	if response == nil {
-		return fmt.Errorf("%w: HTTP client returned nil response", ErrCallbackDeliveryFailed)
+		return d.finish(ctx, delivery, DeliveryFailed, 0, fmt.Errorf("%w: HTTP client returned nil response", ErrCallbackDeliveryFailed))
 	}
 	if response.Body == nil {
-		return fmt.Errorf("%w: HTTP client returned nil response body", ErrCallbackDeliveryFailed)
+		return d.finish(ctx, delivery, DeliveryFailed, response.StatusCode, fmt.Errorf("%w: HTTP client returned nil response body", ErrCallbackDeliveryFailed))
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("%w: unexpected HTTP status %d", ErrCallbackDeliveryFailed, response.StatusCode)
+		return d.finish(ctx, delivery, DeliveryFailed, response.StatusCode, fmt.Errorf("%w: unexpected HTTP status %d", ErrCallbackDeliveryFailed, response.StatusCode))
 	}
 
-	return nil
+	return d.finish(ctx, delivery, DeliverySucceeded, response.StatusCode, nil)
+}
+
+func (d *OutboundCallback) finish(ctx context.Context, delivery DeliveryPayload, outcome DeliveryOutcome, status int, executionErr error) error {
+	if d.audit == nil {
+		return executionErr
+	}
+
+	metadata, ok := schedulerdomain.ExecutionMetadataFromContext(ctx)
+	jobID := "direct:" + string(delivery.CausationID)
+	attempt := uint64(0)
+	if ok {
+		jobID = string(metadata.JobID)
+		attempt = metadata.Attempt
+	}
+	attemptRecord := DeliveryAttempt{
+		JobID:         jobID,
+		Attempt:       attempt,
+		EndpointID:    delivery.EndpointID,
+		CorrelationID: delivery.CorrelationID,
+		CausationID:   delivery.CausationID,
+		Outcome:       outcome,
+		HTTPStatus:    status,
+	}
+	if executionErr != nil {
+		attemptRecord.Error = executionErr.Error()
+	}
+	if err := d.audit.Record(ctx, attemptRecord); err != nil {
+		if executionErr != nil {
+			return fmt.Errorf("%w; record webhook delivery audit: %v", executionErr, err)
+		}
+		return fmt.Errorf("record webhook delivery audit: %w", err)
+	}
+	return executionErr
 }
 
 func decodeDeliveryPayload(payload []byte) (DeliveryPayload, error) {

@@ -75,7 +75,8 @@ func (w *Worker) Execute(ctx context.Context, job *domain.Job) error {
 		return err
 	}
 
-	if err := handler(ctx, job.Payload()); err != nil {
+	handlerContext := domain.WithExecutionMetadata(ctx, domain.ExecutionMetadata{JobID: job.ID(), Attempt: job.Attempts()})
+	if err := handler(handlerContext, job.Payload()); err != nil {
 		return w.persistFailure(ctx, job, err)
 	}
 

@@ -150,7 +150,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create saga executor: %w", err)
 	}
-	outboundCallback, err := webhookapplication.NewOutboundCallback(webhooks, webhookclient.New())
+	outboundCallback, err := webhookapplication.NewOutboundCallbackWithAudit(webhooks, webhookclient.New(), webhooksqlite.NewDeliveryAuditRepository(database))
 	if err != nil {
 		return nil, fmt.Errorf("create webhook delivery handler: %w", err)
 	}
