@@ -311,7 +311,7 @@ func withRequestMetadata(writer http.ResponseWriter, request *http.Request) (*ht
 	correlationID := strings.TrimSpace(request.Header.Get("X-Correlation-ID"))
 	if correlationID == "" {
 		var err error
-		correlationID, err = observability.NewCorrelationID()
+		correlationID, err = derivedCorrelationID(request)
 		if err != nil {
 			api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
 			return request, false
@@ -323,6 +323,27 @@ func withRequestMetadata(writer http.ResponseWriter, request *http.Request) (*ht
 	}
 	writer.Header().Set("X-Correlation-ID", correlationID)
 	return request.WithContext(observability.WithMetadata(request.Context(), observability.Metadata{CorrelationID: correlationID})), true
+}
+
+func derivedCorrelationID(request *http.Request) (string, error) {
+	var body []byte
+	if request.Body != nil {
+		var err error
+		body, err = io.ReadAll(request.Body)
+		if err != nil {
+			return "", fmt.Errorf("read request body for correlation id: %w", err)
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(request.Method))
+	_, _ = hash.Write([]byte(" "))
+	_, _ = hash.Write([]byte(request.URL.EscapedPath()))
+	_, _ = hash.Write([]byte("?"))
+	_, _ = hash.Write([]byte(request.URL.RawQuery))
+	_, _ = hash.Write([]byte("\n"))
+	_, _ = hash.Write(body)
+	return "derived-" + fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 func decodeJSON(writer http.ResponseWriter, request *http.Request, destination any) bool {

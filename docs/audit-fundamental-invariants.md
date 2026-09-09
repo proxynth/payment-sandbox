@@ -43,11 +43,11 @@ Les scénarios de replay utilisent un registre de providers configuré par seed,
 
 - Le replay reproduit les résultats métier qu'il expose, mais il ne reconstruit pas un runtime historique à partir de `event_log` et `scheduler_jobs`.
 - L'event log contient maintenant le snapshot nécessaire aux transitions paiement, mais il ne journalise pas encore chaque changement de job ou chaque tentative/livraison webhook comme événement d'audit autonome.
-- Une requête runtime sans `X-Correlation-ID` reçoit un identifiant de corrélation aléatoire. Cet identifiant apparaît dans les métadonnées d'observabilité et les webhooks ; il n'est pas un résultat du replay de scénario, mais l'observation HTTP brute n'est donc pas byte-à-byte déterministe sans identifiant fourni par le client.
+- Une requête runtime sans `X-Correlation-ID` reçoit un identifiant dérivé de façon stable de sa méthode, son chemin, sa query et son corps. Le client peut toujours fournir sa propre valeur pour rattacher plusieurs requêtes à une même trace.
 - SQLite apporte l'atomicité locale testée ici. Le projet ne revendique pas de disponibilité ou de coordination multi-processus au-delà de ses verrous SQLite.
 
 ## Verdict
 
 Les propriétés qui étaient seulement déclarées au commit initial ne le sont plus toutes : les chemins transactionnels, l'idempotence HTTP, les retries, la concurrence de job, la persistance du contrôle runtime et les snapshots d'événements sont maintenant couverts par des tests exécutés.
 
-Le déterminisme est réel pour les scénarios de replay et leurs résultats métier. Il reste conditionnel pour les réponses runtime complètes quand le client ne fournit pas d'identifiant de corrélation, et l'audit reste incomplet pour les transitions internes de jobs et de livraison webhook.
+Le déterminisme est réel pour les scénarios de replay et leurs résultats métier, ainsi que pour les métadonnées de corrélation des requêtes runtime équivalentes. L'audit reste incomplet pour les transitions internes de jobs et de livraison webhook.
