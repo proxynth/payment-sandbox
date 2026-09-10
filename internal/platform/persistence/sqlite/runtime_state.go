@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -14,7 +15,7 @@ func NewRuntimeStateStore(db *sql.DB) *RuntimeStateStore { return &RuntimeStateS
 func (s *RuntimeStateStore) Load(ctx context.Context, key string) (time.Time, bool, error) {
 	var value string
 	err := s.db.QueryRowContext(ctx, `SELECT value FROM runtime_state WHERE key = ?`, key).Scan(&value)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
 	if err != nil {

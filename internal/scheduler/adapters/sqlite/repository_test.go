@@ -46,7 +46,7 @@ func TestRepositoryRoundTripsAndAcquiresJob(t *testing.T) {
 		t.Fatalf("acquired job = %+v", acquired)
 	}
 	var snapshots int
-	if err := db.QueryRow(`SELECT count(*) FROM scheduler_job_audit WHERE job_id = ?`, job.ID()).Scan(&snapshots); err != nil {
+	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM scheduler_job_audit WHERE job_id = ?`, job.ID()).Scan(&snapshots); err != nil {
 		t.Fatal(err)
 	}
 	if snapshots != 2 {
@@ -117,7 +117,7 @@ func TestAggregateHistoryWithSingleConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := migrations.Up(db); err != nil {
 		t.Fatal(err)
 	}

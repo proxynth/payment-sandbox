@@ -44,7 +44,7 @@ func TestDeliveryAuditRepositoryPersistsOneRecordPerJobAttempt(t *testing.T) {
 
 	var attempts, status int
 	var outcome, recordedErr string
-	if err := db.QueryRow(`SELECT attempt, http_status, outcome, error FROM webhook_delivery_audit WHERE job_id = ?`, "job-1").Scan(&attempts, &status, &outcome, &recordedErr); err != nil {
+	if err := db.QueryRowContext(context.Background(), `SELECT attempt, http_status, outcome, error FROM webhook_delivery_audit WHERE job_id = ?`, "job-1").Scan(&attempts, &status, &outcome, &recordedErr); err != nil {
 		t.Fatal(err)
 	}
 	if attempts != 1 || status != 502 || outcome != string(application.DeliveryFailed) || recordedErr != failed.Error {

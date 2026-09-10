@@ -25,7 +25,7 @@ func ReconstructFromEvents(events []domain.BusinessEvent) (*domain.Payment, erro
 	var payment *domain.Payment
 	for index, event := range events {
 		if err := event.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: invalid event %q: %v", ErrInconsistentEventHistory, event.ID(), err)
+			return nil, fmt.Errorf("%w: invalid event %q: %w", ErrInconsistentEventHistory, event.ID(), err)
 		}
 		if index == 0 {
 			aggregateID = event.AggregateID()
@@ -35,14 +35,14 @@ func ReconstructFromEvents(events []domain.BusinessEvent) (*domain.Payment, erro
 		}
 		var snapshot domain.EventSnapshot
 		if err := json.Unmarshal(event.Payload(), &snapshot); err != nil {
-			return nil, fmt.Errorf("%w: event %q snapshot: %v", ErrInconsistentEventHistory, event.ID(), err)
+			return nil, fmt.Errorf("%w: event %q snapshot: %w", ErrInconsistentEventHistory, event.ID(), err)
 		}
 		if snapshot.PaymentID != aggregateID || snapshot.Version != event.AggregateVersion() {
 			return nil, fmt.Errorf("%w: event %q snapshot identity", ErrInconsistentEventHistory, event.ID())
 		}
 		restored, err := snapshot.Restore()
 		if err != nil {
-			return nil, fmt.Errorf("%w: event %q snapshot: %v", ErrInconsistentEventHistory, event.ID(), err)
+			return nil, fmt.Errorf("%w: event %q snapshot: %w", ErrInconsistentEventHistory, event.ID(), err)
 		}
 		payment = restored
 	}

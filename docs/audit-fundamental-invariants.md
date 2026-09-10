@@ -117,3 +117,22 @@ puis échoue sur `golangci-lint` absent ; `make fmt` échoue également à cette
 après gofmt. Le contrôle obligatoire de lint reste donc non validé. Le correctif
 et ce complément de rapport sont commités sur la branche d'audit ; le commit a
 été publié après validation des tests disponibles.
+
+## Rétablissement du lint — 10 septembre 2026
+
+`golangci-lint` v2.12.2 (version de la CI) a été installé dans l'environnement
+d'audit. La première exécution a révélé 16 diagnostics ; quatre supplémentaires
+ont été affichés après leur correction. Les changements conservent les causes
+d'erreurs avec `%w`, utilisent `errors.Is`, ajoutent le contexte aux requêtes SQL
+de tests et rendent explicite l'abandon des erreurs de fermeture dans les defer.
+Ils retirent également une conversion de chaîne inutile. Aucune règle de lint
+n'a été désactivée.
+
+Sur cet état local, `make fmt`, `make check` et `make test-race` réussissent.
+Le lint termine avec `0 issues`. Cela ne démontre pas la cohérence de la vue
+globale pendant des écritures concurrentes : ce point reste ouvert.
+
+Les changements de ce lot ne sont pas publiés : AGENTS.md exige une signature
+SSH, alors qu'aucun agent SSH ni clé de signature Git ne sont configurés dans
+cet environnement. Les publications précédentes ne constituent pas une preuve
+que cette exigence a été respectée.

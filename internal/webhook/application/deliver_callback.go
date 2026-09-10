@@ -141,7 +141,7 @@ func (d *OutboundCallback) finish(ctx context.Context, delivery DeliveryPayload,
 	}
 	if err := d.audit.Record(ctx, attemptRecord); err != nil {
 		if executionErr != nil {
-			return fmt.Errorf("%w; record webhook delivery audit: %v", executionErr, err)
+			return fmt.Errorf("%w; record webhook delivery audit: %w", executionErr, err)
 		}
 		return fmt.Errorf("record webhook delivery audit: %w", err)
 	}
@@ -160,7 +160,7 @@ func (d *OutboundCallback) start(ctx context.Context, delivery DeliveryPayload) 
 
 func (d *OutboundCallback) newAttempt(ctx context.Context, delivery DeliveryPayload, outcome DeliveryOutcome, status int) DeliveryAttempt {
 	metadata, ok := schedulerdomain.ExecutionMetadataFromContext(ctx)
-	jobID := "direct:" + string(delivery.CausationID)
+	jobID := "direct:" + delivery.CausationID
 	attempt := uint64(0)
 	if ok {
 		jobID = string(metadata.JobID)

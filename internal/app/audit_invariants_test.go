@@ -732,11 +732,11 @@ func TestAuditWebhookCrashAfterSuccessBeforeCompletionIsTraceable(t *testing.T) 
 	if client.calls.Load() != 2 {
 		t.Fatalf("callback deliveries = %d, want 2 after crash window", client.calls.Load())
 	}
-	rows, err := db.Query(`SELECT attempt, outcome, http_status FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, job.ID())
+	rows, err := db.QueryContext(context.Background(), `SELECT attempt, outcome, http_status FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, job.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var recorded []int
 	for rows.Next() {
 		var attempt, status int
@@ -811,11 +811,11 @@ func TestAuditWebhookAuditWriteFailureLeavesUnknownAttemptTrace(t *testing.T) {
 	if client.calls.Load() != 2 {
 		t.Fatalf("callback deliveries = %d, want retry after audit failure", client.calls.Load())
 	}
-	rows, err := db.Query(`SELECT attempt, outcome FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, job.ID())
+	rows, err := db.QueryContext(context.Background(), `SELECT attempt, outcome FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, job.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var recorded []string
 	for rows.Next() {
 		var attempt int

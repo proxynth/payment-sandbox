@@ -62,7 +62,7 @@ func (r *DeliveryAuditRepository) ListByJob(ctx context.Context, jobID string) (
 	if err != nil {
 		return nil, fmt.Errorf("list webhook delivery audit for job %q: %w", jobID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	attempts := make([]application.DeliveryAttempt, 0)
 	for rows.Next() {

@@ -132,7 +132,7 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 	if err != nil {
 		return nil, fmt.Errorf("list scheduler audit for job %q: %w", id, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	snapshots := make([]domain.JobSnapshot, 0)
 	for rows.Next() {
 		var jobType, status, scheduledAt, nextAttemptAt, leaseOwner, leaseExpiresAt, aggregateID, causationID string
@@ -172,7 +172,7 @@ func (r *Repository) ListAuditByAggregate(ctx context.Context, aggregateID strin
 	if err != nil {
 		return nil, fmt.Errorf("list scheduler jobs for aggregate %q: %w", aggregateID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []string
 	for rows.Next() {
 		var jobID string

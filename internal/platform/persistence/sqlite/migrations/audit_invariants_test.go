@@ -57,10 +57,10 @@ func TestAuditUpgradeBackfillsSchedulerJobAuditPayload(t *testing.T) {
 	if err := goose.UpTo(db, "sql", 11); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts) VALUES ('job-1','webhook.delivery',X'7B7D','2026-01-01T00:00:00.000000000Z','2026-01-01T00:00:00.000000000Z','pending','','',0)`); err != nil {
+	if _, err := db.ExecContext(context.Background(), `INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts) VALUES ('job-1','webhook.delivery',X'7B7D','2026-01-01T00:00:00.000000000Z','2026-01-01T00:00:00.000000000Z','pending','','',0)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO scheduler_job_audit(id,job_id,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at) VALUES ('audit-1','job-1','pending',0,'2026-01-01T00:00:00.000000000Z','2026-01-01T00:00:00.000000000Z','','')`); err != nil {
+	if _, err := db.ExecContext(context.Background(), `INSERT INTO scheduler_job_audit(id,job_id,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at) VALUES ('audit-1','job-1','pending',0,'2026-01-01T00:00:00.000000000Z','2026-01-01T00:00:00.000000000Z','','')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := Up(db); err != nil {
@@ -68,7 +68,7 @@ func TestAuditUpgradeBackfillsSchedulerJobAuditPayload(t *testing.T) {
 	}
 	var jobType string
 	var payload []byte
-	if err := db.QueryRow(`SELECT job_type,payload FROM scheduler_job_audit WHERE id='audit-1'`).Scan(&jobType, &payload); err != nil {
+	if err := db.QueryRowContext(context.Background(), `SELECT job_type,payload FROM scheduler_job_audit WHERE id='audit-1'`).Scan(&jobType, &payload); err != nil {
 		t.Fatal(err)
 	}
 	if jobType != "webhook.delivery" || string(payload) != "{}" {

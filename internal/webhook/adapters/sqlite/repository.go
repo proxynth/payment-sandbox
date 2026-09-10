@@ -56,7 +56,7 @@ func (r *Repository) List(ctx context.Context) ([]*domain.Endpoint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list webhook endpoints: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]*domain.Endpoint, 0)
 	for rows.Next() {
 		var id, url string
