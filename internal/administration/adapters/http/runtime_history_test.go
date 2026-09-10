@@ -22,7 +22,7 @@ func TestRuntimeHistoryHandlerReturnsSafeReadOnlyHistory(t *testing.T) {
 	payment, _ := paymentdomain.New("payment-http-history", money)
 	payload, _ := json.Marshal(paymentdomain.NewEventSnapshot(payment))
 	event, _ := paymentdomain.NewBusinessEventWithPayload("event-http-history", payment.ID(), paymentdomain.EventPaymentCreated, time.Unix(1, 0), 1, "corr", "", payload)
-	handler, err := NewRuntimeHistoryHandler(&httpHistoryEvents{events: []paymentdomain.BusinessEvent{event}}, &httpHistoryJobs{snapshots: []schedulerdomain.JobSnapshot{{ID: "job-http", Type: "webhook.delivery", Payload: []byte("secret-payload"), ScheduledAt: time.Unix(1, 0), NextAttemptAt: time.Unix(1, 0), Status: schedulerdomain.JobCompleted, AggregateID: string(payment.ID()), CausationID: string(event.ID())}}}, &httpHistoryHooks{attempts: []webhookapplication.DeliveryAttempt{{JobID: "job-http", Attempt: 1, Outcome: webhookapplication.DeliverySucceeded}}})
+	handler, err := NewRuntimeHistoryHandler(historyTestTransaction{}, &httpHistoryEvents{events: []paymentdomain.BusinessEvent{event}}, &httpHistoryJobs{snapshots: []schedulerdomain.JobSnapshot{{ID: "job-http", Type: "webhook.delivery", Payload: []byte("secret-payload"), ScheduledAt: time.Unix(1, 0), NextAttemptAt: time.Unix(1, 0), Status: schedulerdomain.JobCompleted, AggregateID: string(payment.ID()), CausationID: string(event.ID())}}}, &httpHistoryHooks{attempts: []webhookapplication.DeliveryAttempt{{JobID: "job-http", Attempt: 1, Outcome: webhookapplication.DeliverySucceeded}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +47,12 @@ func TestRuntimeHistoryHandlerReturnsSafeReadOnlyHistory(t *testing.T) {
 }
 
 type httpHistoryEvents struct{ events []paymentdomain.BusinessEvent }
+
+type historyTestTransaction struct{}
+
+func (historyTestTransaction) WithinContext(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 func (r *httpHistoryEvents) Append(context.Context, paymentdomain.BusinessEvent) error { return nil }
 func (r *httpHistoryEvents) ListByAggregate(context.Context, paymentdomain.ID) ([]paymentdomain.BusinessEvent, error) {

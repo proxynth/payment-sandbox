@@ -20,7 +20,7 @@ func TestRuntimeHistoryReconstructsPaymentAndCausalJobs(t *testing.T) {
 	event, _ := paymentdomain.NewBusinessEventWithPayload("event-history", payment.ID(), paymentdomain.EventPaymentCreated, time.Unix(1, 0), 1, "corr", "", payload)
 	when := time.Unix(1, 0).UTC()
 	snapshot := schedulerdomain.JobSnapshot{ID: "job-history", Type: "webhook.delivery", Payload: []byte("sensitive"), ScheduledAt: when, NextAttemptAt: when, Status: schedulerdomain.JobCompleted, Attempts: 1, AggregateID: string(payment.ID()), CausationID: string(event.ID())}
-	history, err := NewRuntimeHistory(&runtimeHistoryEvents{events: []paymentdomain.BusinessEvent{event}}, &runtimeHistoryJobs{snapshots: []schedulerdomain.JobSnapshot{snapshot}}, &runtimeHistoryHooks{attempts: []webhookapplication.DeliveryAttempt{{JobID: "job-history", Attempt: 1, Outcome: webhookapplication.DeliverySucceeded}}})
+	history, err := NewRuntimeHistory(historyTestTransaction{}, &runtimeHistoryEvents{events: []paymentdomain.BusinessEvent{event}}, &runtimeHistoryJobs{snapshots: []schedulerdomain.JobSnapshot{snapshot}}, &runtimeHistoryHooks{attempts: []webhookapplication.DeliveryAttempt{{JobID: "job-history", Attempt: 1, Outcome: webhookapplication.DeliverySucceeded}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,6 +34,12 @@ func TestRuntimeHistoryReconstructsPaymentAndCausalJobs(t *testing.T) {
 }
 
 type runtimeHistoryEvents struct{ events []paymentdomain.BusinessEvent }
+
+type historyTestTransaction struct{}
+
+func (historyTestTransaction) WithinContext(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 func (r *runtimeHistoryEvents) Append(context.Context, paymentdomain.BusinessEvent) error { return nil }
 func (r *runtimeHistoryEvents) ListByAggregate(context.Context, paymentdomain.ID) ([]paymentdomain.BusinessEvent, error) {

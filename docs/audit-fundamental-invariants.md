@@ -99,10 +99,9 @@ fermer le curseur avant de charger les snapshots, et respecter la transaction
 
 ### Risques encore ouverts
 
-- La vue globale fait plusieurs lectures sans transaction de lecture commune :
-  une réponse peut mélanger des états observés à des instants différents si un
-  worker ou une commande écrit entre les requêtes. Risque issu du code, non
-  reproduit par un test concurrent à ce stade.
+- La lecture sans transaction commune produisait une réponse mélangeant des
+  états différents. Le scénario a depuis été reproduit et corrigé ; voir la
+  contre-vérification transactionnelle ci-dessous.
 - Un test HTTP dédié vérifie le statut, la reconstruction et la non-exposition des
   payloads dans la réponse ; il ne couvre pas encore une lecture concurrente réelle.
 - L'ordre des snapshots est calculé à partir des tentatives, dates et statuts ;
@@ -132,7 +131,34 @@ Sur cet état local, `make fmt`, `make check` et `make test-race` réussissent.
 Le lint termine avec `0 issues`. Cela ne démontre pas la cohérence de la vue
 globale pendant des écritures concurrentes : ce point reste ouvert.
 
-Les changements de ce lot ne sont pas publiés : AGENTS.md exige une signature
-SSH, alors qu'aucun agent SSH ni clé de signature Git ne sont configurés dans
-cet environnement. Les publications précédentes ne constituent pas une preuve
-que cette exigence a été respectée.
+Le lot de lint a été publié dans `5a594c5cf5247b80ed64c93a80574b8c189c2444`,
+sans signature SSH, avec l'accord explicite de l'utilisateur. Aucun agent SSH
+ni clé de signature Git ne sont configurés dans cet environnement.
+
+## Medium — Historique global incohérent pendant une écriture
+
+`TestRuntimeHistoryUsesOneSQLiteSnapshot` utilise deux connexions SQLite WAL
+sur un fichier temporaire migré en version 13. Après la lecture des événements,
+une goroutine sur la seconde connexion valide atomiquement un nouvel événement,
+un job et un marqueur de tentative webhook. La lecture de l'historique reprend
+ensuite. Avant correction, elle retourne le paiement en version 1 avec le job
+de la version 2 (`mixed snapshot: payment version=1 events=1 jobs=1`).
+
+Impact : diagnostic d'audit trompeur, sans double effet métier démontré.
+Probabilité : dépend du chevauchement des lectures et écritures ; le test force
+cet entrelacement de façon reproductible, sans sleep ni appel réseau.
+Cause : les requêtes indépendantes ne partageaient pas d'instantané SQLite.
+
+Correction : le constructeur de RuntimeHistory exige désormais un port de
+transaction ; la composition runtime lui injecte le TransactionManager SQLite
+existant. Toutes les lectures utilisent le même contexte transactionnel.
+Le test passe après correction : la première réponse ne contient que la
+version 1, la suivante voit la version 2, son job et sa tentative webhook.
+Aucune migration supplémentaire n'est nécessaire. Cette consultation ne
+réexécute aucun job ; elle n'est pas un replay comportemental complet du runtime.
+
+Validation : `make fmt`, `make check` (zéro diagnostic de lint) et `make test-race`
+réussissent. L'installation Go a dû être restaurée depuis l'archive locale
+après une erreur de compilation due à un fichier standard tronqué ; les tests
+ont été relancés après restauration. Le test échoue avant correction et passe
+après sur le même scénario SQLite.

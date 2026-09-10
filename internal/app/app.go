@@ -204,7 +204,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create webhook audit handler: %w", err)
 	}
-	runtimeHistoryHandler, err := administrationhttp.NewRuntimeHistoryHandler(events, jobRepository, webhooksqlite.NewDeliveryAuditRepository(database))
+	runtimeHistoryHandler, err := administrationhttp.NewRuntimeHistoryHandler(sqlite.NewTransactionManager(database), events, jobRepository, webhooksqlite.NewDeliveryAuditRepository(database))
 	if err != nil {
 		return nil, fmt.Errorf("create runtime history handler: %w", err)
 	}

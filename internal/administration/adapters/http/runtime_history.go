@@ -19,8 +19,8 @@ type RuntimeHistoryHandler struct {
 	history *administrationapplication.RuntimeHistory
 }
 
-func NewRuntimeHistoryHandler(events paymentapplication.EventLog, jobs administrationapplication.RuntimeJobAuditReader, hooks webhookapplication.DeliveryAuditReader) (*RuntimeHistoryHandler, error) {
-	history, err := administrationapplication.NewRuntimeHistory(events, jobs, hooks)
+func NewRuntimeHistoryHandler(transaction administrationapplication.RuntimeHistoryTransaction, events paymentapplication.EventLog, jobs administrationapplication.RuntimeJobAuditReader, hooks webhookapplication.DeliveryAuditReader) (*RuntimeHistoryHandler, error) {
+	history, err := administrationapplication.NewRuntimeHistory(transaction, events, jobs, hooks)
 	if err != nil {
 		return nil, err
 	}
