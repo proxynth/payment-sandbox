@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/proxynth/payment-sandbox/compare/v1.4.0...v1.4.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* :shield: harden runtime invariants ([#103](https://github.com/proxynth/payment-sandbox/issues/103)) ([e093013](https://github.com/proxynth/payment-sandbox/commit/e093013d8f87dc229a684c6d54dabd79bcc07321))
+
 ## [1.4.0](https://github.com/proxynth/payment-sandbox/compare/v1.3.0...v1.4.0) (2026-08-27)
 
 
