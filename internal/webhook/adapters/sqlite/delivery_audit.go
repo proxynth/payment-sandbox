@@ -23,13 +23,18 @@ func (r *DeliveryAuditRepository) Record(ctx context.Context, attempt applicatio
 		return fmt.Errorf("invalid webhook delivery audit attempt")
 	}
 	if attempt.Outcome == application.DeliveryStarted {
-		result, err := r.executor(ctx).ExecContext(ctx, `
+		exec := r.executor(ctx)
+		runtimeSequence, err := persistencesqlite.NextRuntimeSequence(ctx, exec)
+		if err != nil {
+			return fmt.Errorf("allocate runtime sequence for webhook delivery job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
+		}
+		result, err := exec.ExecContext(ctx, `
 		INSERT INTO webhook_delivery_audit(
-			job_id, attempt, endpoint_id, correlation_id, causation_id, outcome, http_status, error
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			job_id, attempt, endpoint_id, correlation_id, causation_id, outcome, http_status, error, runtime_sequence
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(job_id, attempt) DO NOTHING`,
 			attempt.JobID, attempt.Attempt, attempt.EndpointID, attempt.CorrelationID,
-			attempt.CausationID, attempt.Outcome, attempt.HTTPStatus, attempt.Error)
+			attempt.CausationID, attempt.Outcome, attempt.HTTPStatus, attempt.Error, runtimeSequence)
 		if err != nil {
 			return fmt.Errorf("record webhook delivery audit start for job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
 		}
@@ -95,8 +100,8 @@ func (r *DeliveryAuditRepository) ListByJob(ctx context.Context, jobID string) (
 		return nil, fmt.Errorf("webhook delivery audit job ID is required")
 	}
 	rows, err := r.executor(ctx).QueryContext(ctx, `
-		SELECT attempt, endpoint_id, correlation_id, causation_id, outcome, http_status, error
-		FROM webhook_delivery_audit WHERE job_id = ? ORDER BY attempt`, jobID)
+		SELECT attempt, endpoint_id, correlation_id, causation_id, outcome, http_status, error, runtime_sequence
+		FROM webhook_delivery_audit WHERE job_id = ? ORDER BY CASE WHEN runtime_sequence = 0 THEN 1 ELSE 0 END, runtime_sequence, attempt`, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("list webhook delivery audit for job %q: %w", jobID, err)
 	}
@@ -106,7 +111,7 @@ func (r *DeliveryAuditRepository) ListByJob(ctx context.Context, jobID string) (
 	for rows.Next() {
 		var attempt application.DeliveryAttempt
 		var number uint64
-		if err := rows.Scan(&number, &attempt.EndpointID, &attempt.CorrelationID, &attempt.CausationID, &attempt.Outcome, &attempt.HTTPStatus, &attempt.Error); err != nil {
+		if err := rows.Scan(&number, &attempt.EndpointID, &attempt.CorrelationID, &attempt.CausationID, &attempt.Outcome, &attempt.HTTPStatus, &attempt.Error, &attempt.RuntimeSequence); err != nil {
 			return nil, fmt.Errorf("scan webhook delivery audit for job %q: %w", jobID, err)
 		}
 		attempt.JobID = jobID

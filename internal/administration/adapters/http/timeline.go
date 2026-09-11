@@ -59,6 +59,7 @@ type eventResponse struct {
 	AggregateVersion uint64 `json:"aggregate_version"`
 	CorrelationID    string `json:"correlation_id"`
 	CausationID      string `json:"causation_id"`
+	RuntimeSequence  uint64 `json:"runtime_sequence,omitempty"`
 }
 
 func (h *TimelineHandler) getTimeline(writer http.ResponseWriter, request *http.Request) {
@@ -84,6 +85,7 @@ func (h *TimelineHandler) getTimeline(writer http.ResponseWriter, request *http.
 			AggregateVersion: event.AggregateVersion(),
 			CorrelationID:    event.CorrelationID(),
 			CausationID:      string(event.CausationID()),
+			RuntimeSequence:  event.RuntimeSequence(),
 		})
 	}
 

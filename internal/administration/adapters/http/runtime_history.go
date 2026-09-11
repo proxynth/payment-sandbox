@@ -41,11 +41,12 @@ type runtimeJobResponse struct {
 	Deliveries  []webhookAttemptResponse  `json:"deliveries"`
 }
 type runtimeSnapshotResponse struct {
-	Status        string `json:"status"`
-	Attempts      uint64 `json:"attempts"`
-	ScheduledAt   string `json:"scheduled_at"`
-	NextAttemptAt string `json:"next_attempt_at"`
-	LeaseOwner    string `json:"lease_owner,omitempty"`
+	Status          string `json:"status"`
+	Attempts        uint64 `json:"attempts"`
+	ScheduledAt     string `json:"scheduled_at"`
+	NextAttemptAt   string `json:"next_attempt_at"`
+	LeaseOwner      string `json:"lease_owner,omitempty"`
+	RuntimeSequence uint64 `json:"runtime_sequence,omitempty"`
 }
 
 func (h *RuntimeHistoryHandler) Register(server *api.Server, token string) error {
@@ -65,13 +66,13 @@ func (h *RuntimeHistoryHandler) getHistory(w http.ResponseWriter, r *http.Reques
 	}
 	events := make([]eventResponse, 0, len(history.Events))
 	for _, e := range history.Events {
-		events = append(events, eventResponse{ID: string(e.ID()), AggregateID: string(e.AggregateID()), Type: string(e.Type()), OccurredAt: e.OccurredAt().UTC().Format(time.RFC3339Nano), AggregateVersion: e.AggregateVersion(), CorrelationID: e.CorrelationID(), CausationID: string(e.CausationID())})
+		events = append(events, eventResponse{ID: string(e.ID()), AggregateID: string(e.AggregateID()), Type: string(e.Type()), OccurredAt: e.OccurredAt().UTC().Format(time.RFC3339Nano), AggregateVersion: e.AggregateVersion(), CorrelationID: e.CorrelationID(), CausationID: string(e.CausationID()), RuntimeSequence: e.RuntimeSequence()})
 	}
 	jobs := make([]runtimeJobResponse, 0, len(history.Jobs))
 	for _, j := range history.Jobs {
 		out := runtimeJobResponse{JobID: j.JobID, Type: j.Type, AggregateID: j.AggregateID, CausationID: j.CausationID, Snapshots: make([]runtimeSnapshotResponse, 0, len(j.Snapshots)), Deliveries: make([]webhookAttemptResponse, 0, len(j.Deliveries))}
 		for _, s := range j.Snapshots {
-			out.Snapshots = append(out.Snapshots, runtimeSnapshotResponse{Status: string(s.Status), Attempts: s.Attempts, ScheduledAt: s.ScheduledAt.UTC().Format(time.RFC3339Nano), NextAttemptAt: s.NextAttemptAt.UTC().Format(time.RFC3339Nano), LeaseOwner: s.LeaseOwner})
+			out.Snapshots = append(out.Snapshots, runtimeSnapshotResponse{Status: string(s.Status), Attempts: s.Attempts, ScheduledAt: s.ScheduledAt.UTC().Format(time.RFC3339Nano), NextAttemptAt: s.NextAttemptAt.UTC().Format(time.RFC3339Nano), LeaseOwner: s.LeaseOwner, RuntimeSequence: s.RuntimeSequence})
 		}
 		for _, d := range j.Deliveries {
 			out.Deliveries = append(out.Deliveries, newWebhookAttemptResponse(d))

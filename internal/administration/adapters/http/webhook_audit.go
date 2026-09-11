@@ -34,13 +34,14 @@ type webhookAuditResponse struct {
 }
 
 type webhookAttemptResponse struct {
-	Attempt       uint64 `json:"attempt"`
-	EndpointID    string `json:"endpoint_id"`
-	CorrelationID string `json:"correlation_id"`
-	CausationID   string `json:"causation_id"`
-	Outcome       string `json:"outcome"`
-	HTTPStatus    int    `json:"http_status"`
-	Error         string `json:"error,omitempty"`
+	Attempt         uint64 `json:"attempt"`
+	EndpointID      string `json:"endpoint_id"`
+	CorrelationID   string `json:"correlation_id"`
+	CausationID     string `json:"causation_id"`
+	Outcome         string `json:"outcome"`
+	HTTPStatus      int    `json:"http_status"`
+	Error           string `json:"error,omitempty"`
+	RuntimeSequence uint64 `json:"runtime_sequence,omitempty"`
 }
 
 func (h *WebhookAuditHandler) getAudit(writer http.ResponseWriter, request *http.Request) {
@@ -73,6 +74,6 @@ func webhookAuditJobID(path string) (string, bool) {
 func newWebhookAttemptResponse(attempt webhookapplication.DeliveryAttempt) webhookAttemptResponse {
 	return webhookAttemptResponse{
 		Attempt: attempt.Attempt, EndpointID: string(attempt.EndpointID), CorrelationID: attempt.CorrelationID,
-		CausationID: attempt.CausationID, Outcome: string(attempt.Outcome), HTTPStatus: attempt.HTTPStatus, Error: attempt.Error,
+		CausationID: attempt.CausationID, Outcome: string(attempt.Outcome), HTTPStatus: attempt.HTTPStatus, Error: attempt.Error, RuntimeSequence: attempt.RuntimeSequence,
 	}
 }

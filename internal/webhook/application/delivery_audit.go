@@ -20,14 +20,15 @@ const (
 // DeliveryAttempt is an audit-safe description of a callback attempt. It
 // deliberately excludes the request and response bodies.
 type DeliveryAttempt struct {
-	JobID         string
-	Attempt       uint64
-	EndpointID    webhookdomain.EndpointID
-	CorrelationID string
-	CausationID   string
-	Outcome       DeliveryOutcome
-	HTTPStatus    int
-	Error         string
+	JobID           string
+	Attempt         uint64
+	EndpointID      webhookdomain.EndpointID
+	CorrelationID   string
+	CausationID     string
+	Outcome         DeliveryOutcome
+	HTTPStatus      int
+	Error           string
+	RuntimeSequence uint64
 }
 
 // DeliveryAudit records callback outcomes independently of transport.
