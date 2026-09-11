@@ -24,6 +24,12 @@ type BusinessEvent struct {
 	correlationID    string
 	causationID      EventID
 	payload          []byte
+	runtimeSequence  uint64
+}
+
+func (e BusinessEvent) WithRuntimeSequence(sequence uint64) BusinessEvent {
+	e.runtimeSequence = sequence
+	return e
 }
 
 func NewBusinessEvent(
@@ -133,6 +139,10 @@ func (e BusinessEvent) CausationID() EventID {
 
 func (e BusinessEvent) Payload() []byte {
 	return cloneEventPayload(e.payload)
+}
+
+func (e BusinessEvent) RuntimeSequence() uint64 {
+	return e.runtimeSequence
 }
 
 func cloneEventPayload(payload []byte) []byte {

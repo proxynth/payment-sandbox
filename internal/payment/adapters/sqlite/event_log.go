@@ -16,6 +16,7 @@ var _ application.EventLog = (*EventLogRepository)(nil)
 type eventExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 type EventLogRepository struct {
@@ -42,13 +43,18 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 			aggregate_version,
 			correlation_id,
 			causation_id,
-			payload
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			payload,
+			runtime_sequence
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`
 
 	exec := r.db
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
+	}
+	runtimeSequence, err := persistencesqlite.NextRuntimeSequence(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("allocate runtime sequence for event %q: %w", event.ID(), err)
 	}
 	result, err := exec.ExecContext(
 		ctx,
@@ -61,6 +67,7 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 		event.CorrelationID(),
 		event.CausationID(),
 		string(event.Payload()),
+		runtimeSequence,
 	)
 	if err != nil {
 		return fmt.Errorf("append event %q: %w", event.ID(), err)
@@ -90,10 +97,11 @@ func (r *EventLogRepository) ListByAggregate(
 			aggregate_version,
 			correlation_id,
 			causation_id,
-			payload
+			payload,
+			runtime_sequence
 		FROM event_log
 		WHERE aggregate_id = ?
-		ORDER BY occurred_at ASC, aggregate_version ASC, id ASC`
+			ORDER BY occurred_at ASC, aggregate_version ASC, id ASC`
 
 	exec := r.db
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
@@ -116,6 +124,7 @@ func (r *EventLogRepository) ListByAggregate(
 			correlationID    string
 			causationID      string
 			payload          []byte
+			runtimeSequence  uint64
 		)
 
 		if err := rows.Scan(
@@ -127,6 +136,7 @@ func (r *EventLogRepository) ListByAggregate(
 			&correlationID,
 			&causationID,
 			&payload,
+			&runtimeSequence,
 		); err != nil {
 			return nil, fmt.Errorf("scan event for aggregate %q: %w", aggregateID, err)
 		}
@@ -149,6 +159,7 @@ func (r *EventLogRepository) ListByAggregate(
 		if err != nil {
 			return nil, fmt.Errorf("restore event %q: %w", id, err)
 		}
+		event = event.WithRuntimeSequence(runtimeSequence)
 
 		events = append(events, event)
 	}

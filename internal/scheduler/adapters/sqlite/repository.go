@@ -109,13 +109,17 @@ func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string,
 }
 
 func appendAudit(ctx context.Context, exec executor, job *domain.Job) error {
+	runtimeSequence, err := persistencesqlite.NextRuntimeSequence(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("allocate runtime sequence for job %q: %w", job.ID(), err)
+	}
 	leaseExpires := ""
 	if !job.LeaseExpiresAt().IsZero() {
 		leaseExpires = formatTimestamp(job.LeaseExpiresAt())
 	}
 	snapshot := fmt.Sprintf("%s|%s|%x|%s|%s|%s|%d|%s|%s|%s|%s", job.ID(), job.Type(), job.Payload(), job.AggregateID(), job.CausationID(), job.Status(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires)
 	hash := sha256.Sum256([]byte(snapshot))
-	_, err := exec.ExecContext(ctx, `INSERT INTO scheduler_job_audit(id,job_id,job_type,payload,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, fmt.Sprintf("%x", hash[:]), job.ID(), job.Type(), job.Payload(), job.Status(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires, job.AggregateID(), job.CausationID())
+	_, err = exec.ExecContext(ctx, `INSERT INTO scheduler_job_audit(id,job_id,job_type,payload,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, fmt.Sprintf("%x", hash[:]), job.ID(), job.Type(), job.Payload(), job.Status(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires, job.AggregateID(), job.CausationID(), runtimeSequence)
 	if err != nil {
 		return fmt.Errorf("append scheduler audit for job %q: %w", job.ID(), err)
 	}
@@ -128,7 +132,7 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	rows, err := exec.QueryContext(ctx, `SELECT job_type,payload,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id FROM scheduler_job_audit WHERE job_id = ? ORDER BY attempts, next_attempt_at, CASE status WHEN 'pending' THEN 1 WHEN 'leased' THEN 2 WHEN 'running' THEN 3 WHEN 'failed' THEN 4 WHEN 'completed' THEN 5 END, id`, id)
+	rows, err := exec.QueryContext(ctx, `SELECT job_type,payload,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence FROM scheduler_job_audit WHERE job_id = ? ORDER BY CASE WHEN runtime_sequence = 0 THEN 1 ELSE 0 END, runtime_sequence, attempts, next_attempt_at, CASE status WHEN 'pending' THEN 1 WHEN 'leased' THEN 2 WHEN 'running' THEN 3 WHEN 'failed' THEN 4 WHEN 'completed' THEN 5 END, id`, id)
 	if err != nil {
 		return nil, fmt.Errorf("list scheduler audit for job %q: %w", id, err)
 	}
@@ -137,8 +141,8 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 	for rows.Next() {
 		var jobType, status, scheduledAt, nextAttemptAt, leaseOwner, leaseExpiresAt, aggregateID, causationID string
 		var payload []byte
-		var attempts uint64
-		if err := rows.Scan(&jobType, &payload, &status, &attempts, &scheduledAt, &nextAttemptAt, &leaseOwner, &leaseExpiresAt, &aggregateID, &causationID); err != nil {
+		var attempts, runtimeSequence uint64
+		if err := rows.Scan(&jobType, &payload, &status, &attempts, &scheduledAt, &nextAttemptAt, &leaseOwner, &leaseExpiresAt, &aggregateID, &causationID, &runtimeSequence); err != nil {
 			return nil, fmt.Errorf("scan scheduler audit for job %q: %w", id, err)
 		}
 		scheduled, err := time.Parse(time.RFC3339Nano, scheduledAt)
@@ -156,7 +160,7 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 				return nil, err
 			}
 		}
-		snapshots = append(snapshots, domain.JobSnapshot{ID: id, Type: domain.JobType(jobType), Payload: append([]byte(nil), payload...), Status: domain.JobStatus(status), Attempts: attempts, ScheduledAt: scheduled, NextAttemptAt: next, LeaseOwner: leaseOwner, LeaseExpiresAt: lease, AggregateID: aggregateID, CausationID: causationID})
+		snapshots = append(snapshots, domain.JobSnapshot{ID: id, Type: domain.JobType(jobType), Payload: append([]byte(nil), payload...), Status: domain.JobStatus(status), Attempts: attempts, ScheduledAt: scheduled, NextAttemptAt: next, LeaseOwner: leaseOwner, LeaseExpiresAt: lease, AggregateID: aggregateID, CausationID: causationID, RuntimeSequence: runtimeSequence})
 	}
 	return snapshots, rows.Err()
 }
@@ -168,7 +172,7 @@ func (r *Repository) ListAuditByAggregate(ctx context.Context, aggregateID strin
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	rows, err := exec.QueryContext(ctx, `SELECT DISTINCT job_id FROM scheduler_job_audit WHERE aggregate_id = ? ORDER BY job_id`, aggregateID)
+	rows, err := exec.QueryContext(ctx, `SELECT job_id FROM scheduler_job_audit WHERE aggregate_id = ? GROUP BY job_id ORDER BY CASE WHEN MIN(runtime_sequence) = 0 THEN 1 ELSE 0 END, MIN(runtime_sequence), job_id`, aggregateID)
 	if err != nil {
 		return nil, fmt.Errorf("list scheduler jobs for aggregate %q: %w", aggregateID, err)
 	}

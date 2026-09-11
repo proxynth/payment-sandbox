@@ -6,17 +6,18 @@ import "time"
 // state. Unlike a status-only audit row, it retains the dispatch type and
 // payload needed to reconstruct the job without consulting scheduler_jobs.
 type JobSnapshot struct {
-	ID             JobID
-	Type           JobType
-	Payload        []byte
-	ScheduledAt    time.Time
-	NextAttemptAt  time.Time
-	Status         JobStatus
-	LeaseOwner     string
-	LeaseExpiresAt time.Time
-	Attempts       uint64
-	AggregateID    string
-	CausationID    string
+	ID              JobID
+	Type            JobType
+	Payload         []byte
+	ScheduledAt     time.Time
+	NextAttemptAt   time.Time
+	Status          JobStatus
+	LeaseOwner      string
+	LeaseExpiresAt  time.Time
+	Attempts        uint64
+	AggregateID     string
+	CausationID     string
+	RuntimeSequence uint64
 }
 
 func NewJobSnapshot(job *Job) JobSnapshot {
