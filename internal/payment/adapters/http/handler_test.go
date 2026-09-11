@@ -83,11 +83,13 @@ func TestHandler_PropagatesRequestContext(t *testing.T) {
 	}
 }
 
-func TestHandler_GeneratesAndReturnsCorrelationID(t *testing.T) {
-	server := newTestServer(t, newTestRepository())
-	recorder := doJSON(t, server, http.MethodPost, "/payments", `{"id":"payment-1","amount":100,"currency":"EUR"}`)
-	if recorder.Header().Get("X-Correlation-ID") == "" {
-		t.Fatal("X-Correlation-ID response header is empty")
+func TestHandler_DerivesStableCorrelationID(t *testing.T) {
+	firstServer := newTestServer(t, newTestRepository())
+	secondServer := newTestServer(t, newTestRepository())
+	first := doJSON(t, firstServer, http.MethodPost, "/payments", `{"id":"payment-1","amount":100,"currency":"EUR"}`)
+	second := doJSON(t, secondServer, http.MethodPost, "/payments", `{"id":"payment-1","amount":100,"currency":"EUR"}`)
+	if got := first.Header().Get("X-Correlation-ID"); got == "" || got != second.Header().Get("X-Correlation-ID") {
+		t.Fatalf("derived correlation ids = %q and %q", got, second.Header().Get("X-Correlation-ID"))
 	}
 }
 

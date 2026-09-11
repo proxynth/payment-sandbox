@@ -8,6 +8,13 @@ type JobType string
 
 type JobStatus string
 
+// JobMetadata links a durable job to the business object and event that caused
+// it. Both fields are optional for infrastructure-only jobs.
+type JobMetadata struct {
+	AggregateID string
+	CausationID string
+}
+
 const (
 	JobPending   JobStatus = "pending"
 	JobLeased    JobStatus = "leased"
@@ -26,6 +33,8 @@ type Job struct {
 	leaseOwner     string
 	leaseExpiresAt time.Time
 	attempts       uint64
+	aggregateID    string
+	causationID    string
 }
 
 func NewJob(
@@ -33,6 +42,7 @@ func NewJob(
 	jobType JobType,
 	payload []byte,
 	scheduledAt time.Time,
+	metadata ...JobMetadata,
 ) (Job, error) {
 	if id == "" {
 		return Job{}, ErrInvalidJobID
@@ -48,14 +58,19 @@ func NewJob(
 
 	scheduledAt = scheduledAt.UTC()
 
-	return Job{
+	job := Job{
 		id:            id,
 		jobType:       jobType,
 		payload:       cloneBytes(payload),
 		scheduledAt:   scheduledAt,
 		nextAttemptAt: scheduledAt,
 		status:        JobPending,
-	}, nil
+	}
+	if len(metadata) > 0 {
+		job.aggregateID = metadata[0].AggregateID
+		job.causationID = metadata[0].CausationID
+	}
+	return job, nil
 }
 
 // Restore reconstructs a persisted job without replaying its lifecycle.
@@ -71,6 +86,7 @@ func Restore(
 	leaseOwner string,
 	leaseExpiresAt time.Time,
 	attempts uint64,
+	metadata ...JobMetadata,
 ) (Job, error) {
 	if id == "" {
 		return Job{}, ErrInvalidJobID
@@ -86,7 +102,11 @@ func Restore(
 	default:
 		return Job{}, ErrInvalidExecutionStatus
 	}
-	return Job{id: id, jobType: jobType, payload: cloneBytes(payload), scheduledAt: scheduledAt.UTC(), nextAttemptAt: nextAttemptAt.UTC(), status: status, leaseOwner: leaseOwner, leaseExpiresAt: leaseExpiresAt.UTC(), attempts: attempts}, nil
+	job := Job{id: id, jobType: jobType, payload: cloneBytes(payload), scheduledAt: scheduledAt.UTC(), nextAttemptAt: nextAttemptAt.UTC(), status: status, leaseOwner: leaseOwner, leaseExpiresAt: leaseExpiresAt.UTC(), attempts: attempts}
+	if len(metadata) > 0 {
+		job.aggregateID, job.causationID = metadata[0].AggregateID, metadata[0].CausationID
+	}
+	return job, nil
 }
 
 func (j *Job) RequeueExpired(at time.Time) bool {
@@ -205,6 +225,9 @@ func (j Job) LeaseExpiresAt() time.Time {
 func (j Job) Attempts() uint64 {
 	return j.attempts
 }
+
+func (j Job) AggregateID() string { return j.aggregateID }
+func (j Job) CausationID() string { return j.causationID }
 
 func (j *Job) clearLease() {
 	j.leaseOwner = ""

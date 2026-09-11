@@ -100,6 +100,7 @@ func (r *Runner) Run(ctx context.Context, scenario replaydomain.Scenario) (Resul
 	if err != nil {
 		return Result{}, err
 	}
+	services.worker = worker
 	scheduler, err := schedulerapplication.NewScheduler(jobs, workerDispatcher{worker}, virtualClock, virtualClock, schedulerapplication.Config{Owner: "replay", BatchSize: 100, LeaseDuration: time.Minute})
 	if err != nil {
 		return Result{}, err
@@ -139,6 +140,7 @@ type commandServices struct {
 	clock            *clock.VirtualClock
 	jobs             *scenarioJobRepository
 	scheduler        *schedulerapplication.Scheduler
+	worker           *schedulerapplication.Worker
 	workflow         *paymentworkflowapplication.Orchestrator
 	workflowExecutor *paymentworkflowapplication.PaymentExecutor
 }
@@ -254,10 +256,17 @@ func (s *commandServices) execute(
 		if job.Status() == schedulerdomain.JobPending && job.NextAttemptAt().After(s.clock.Now()) {
 			return nil, ErrAsyncOperationNotDue
 		}
-		if err := s.scheduler.Tick(ctx); err != nil {
+		if s.worker == nil {
+			return nil, ErrAsyncOperationNotFound
+		}
+		acquired, err := s.jobs.Acquire(ctx, job.ID(), "replay-direct", s.clock.Now().Add(time.Minute), s.clock.Now())
+		if err != nil {
 			return nil, err
 		}
-		if job.Status() != schedulerdomain.JobCompleted {
+		if err := s.worker.Execute(ctx, acquired); err != nil {
+			return nil, err
+		}
+		if acquired.Status() != schedulerdomain.JobCompleted {
 			return nil, ErrAsyncOperationNotDue
 		}
 		return nil, nil
@@ -434,14 +443,20 @@ func (r *scenarioJobRepository) FindExecutable(ctx context.Context, at time.Time
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	jobs := make([]*schedulerdomain.Job, 0, limit)
+	jobs := make([]*schedulerdomain.Job, 0, len(r.jobs))
 	for _, job := range r.jobs {
-		if len(jobs) == limit {
-			break
-		}
 		if job.Status() == schedulerdomain.JobPending && !job.NextAttemptAt().After(at) {
 			jobs = append(jobs, job)
 		}
+	}
+	sort.Slice(jobs, func(i, j int) bool {
+		if !jobs[i].NextAttemptAt().Equal(jobs[j].NextAttemptAt()) {
+			return jobs[i].NextAttemptAt().Before(jobs[j].NextAttemptAt())
+		}
+		return jobs[i].ID() < jobs[j].ID()
+	})
+	if len(jobs) > limit {
+		jobs = jobs[:limit]
 	}
 	return jobs, nil
 }
