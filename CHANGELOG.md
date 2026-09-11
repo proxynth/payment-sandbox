@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/proxynth/payment-sandbox/compare/v1.4.1...v1.5.0) (2026-09-11)
+
+
+### Features
+
+* :bookmark: persist runtime sequence ([#105](https://github.com/proxynth/payment-sandbox/issues/105)) ([520f58f](https://github.com/proxynth/payment-sandbox/commit/520f58fc185cbb472802e1a918c36c8b8d85ae3a))
+
 ## [1.4.1](https://github.com/proxynth/payment-sandbox/compare/v1.4.0...v1.4.1) (2026-09-11)
 
 
