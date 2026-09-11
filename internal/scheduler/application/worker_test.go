@@ -15,10 +15,14 @@ func TestWorkerExecute_CompletesJob(t *testing.T) {
 	repository := &fakeWorkerRepository{}
 	var receivedPayload []byte
 	worker, err := NewWorker(repository, map[domain.JobType]JobHandler{
-		"webhook.delivery": func(_ context.Context, payload []byte) error {
+		"webhook.delivery": func(ctx context.Context, payload []byte) error {
 			receivedPayload = payload
 			if job.Status() != domain.JobRunning {
 				t.Errorf("job status during handler = %q, want %q", job.Status(), domain.JobRunning)
+			}
+			metadata, ok := domain.ExecutionMetadataFromContext(ctx)
+			if !ok || metadata.JobID != job.ID() || metadata.Attempt != 1 {
+				t.Errorf("execution metadata = %#v, present=%t; want job %q attempt 1", metadata, ok, job.ID())
 			}
 			return nil
 		},

@@ -8,6 +8,7 @@ import (
 
 	"proxynth/payment-sandbox/internal/payment/application"
 	"proxynth/payment-sandbox/internal/payment/domain"
+	persistencesqlite "proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 )
 
 var _ application.EventLog = (*EventLogRepository)(nil)
@@ -20,6 +21,8 @@ type eventExecutor interface {
 type EventLogRepository struct {
 	db eventExecutor
 }
+
+const sqliteTimestampLayout = "2006-01-02T15:04:05.000000000Z"
 
 func NewEventLogRepository(db eventExecutor) *EventLogRepository {
 	return &EventLogRepository{db: db}
@@ -38,20 +41,26 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 			occurred_at,
 			aggregate_version,
 			correlation_id,
-			causation_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+			causation_id,
+			payload
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`
 
-	result, err := r.db.ExecContext(
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	result, err := exec.ExecContext(
 		ctx,
 		query,
 		event.ID(),
 		event.AggregateID(),
 		event.Type(),
-		event.OccurredAt().UTC().Format(time.RFC3339Nano),
+		event.OccurredAt().UTC().Format(sqliteTimestampLayout),
 		event.AggregateVersion(),
 		event.CorrelationID(),
 		event.CausationID(),
+		string(event.Payload()),
 	)
 	if err != nil {
 		return fmt.Errorf("append event %q: %w", event.ID(), err)
@@ -80,12 +89,17 @@ func (r *EventLogRepository) ListByAggregate(
 			occurred_at,
 			aggregate_version,
 			correlation_id,
-			causation_id
+			causation_id,
+			payload
 		FROM event_log
 		WHERE aggregate_id = ?
 		ORDER BY occurred_at ASC, aggregate_version ASC, id ASC`
 
-	rows, err := r.db.QueryContext(ctx, query, aggregateID)
+	exec := r.db
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		exec = tx
+	}
+	rows, err := exec.QueryContext(ctx, query, aggregateID)
 	if err != nil {
 		return nil, fmt.Errorf("list events for aggregate %q: %w", aggregateID, err)
 	}
@@ -101,6 +115,7 @@ func (r *EventLogRepository) ListByAggregate(
 			aggregateVersion uint64
 			correlationID    string
 			causationID      string
+			payload          []byte
 		)
 
 		if err := rows.Scan(
@@ -111,6 +126,7 @@ func (r *EventLogRepository) ListByAggregate(
 			&aggregateVersion,
 			&correlationID,
 			&causationID,
+			&payload,
 		); err != nil {
 			return nil, fmt.Errorf("scan event for aggregate %q: %w", aggregateID, err)
 		}
@@ -120,7 +136,7 @@ func (r *EventLogRepository) ListByAggregate(
 			return nil, fmt.Errorf("parse event %q timestamp: %w", id, err)
 		}
 
-		event, err := domain.NewBusinessEvent(
+		event, err := domain.NewBusinessEventWithPayload(
 			domain.EventID(id),
 			domain.ID(storedAggregate),
 			domain.EventType(eventType),
@@ -128,6 +144,7 @@ func (r *EventLogRepository) ListByAggregate(
 			aggregateVersion,
 			correlationID,
 			domain.EventID(causationID),
+			payload,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("restore event %q: %w", id, err)

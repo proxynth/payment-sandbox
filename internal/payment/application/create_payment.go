@@ -31,6 +31,19 @@ func (c *CreatePayment) Execute(
 	ctx context.Context,
 	command CreatePaymentCommand,
 ) (*domain.Payment, error) {
+	if tx, ok := c.repository.(TransactionalRepository); ok {
+		var payment *domain.Payment
+		err := tx.WithinContext(ctx, func(txctx context.Context) error {
+			var err error
+			payment, err = c.execute(txctx, command)
+			return err
+		})
+		return payment, err
+	}
+	return c.execute(ctx, command)
+}
+
+func (c *CreatePayment) execute(ctx context.Context, command CreatePaymentCommand) (*domain.Payment, error) {
 	amount, err := domain.NewMoney(
 		command.Amount,
 		command.Currency,

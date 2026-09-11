@@ -211,10 +211,12 @@ type initialPayment struct {
 }
 
 type scenarioCommand struct {
-	Type      string `json:"type"`
-	PaymentID string `json:"payment_id"`
-	Amount    int64  `json:"amount,omitempty"`
-	Currency  string `json:"currency,omitempty"`
+	Type        string `json:"type"`
+	PaymentID   string `json:"payment_id"`
+	Amount      int64  `json:"amount,omitempty"`
+	Currency    string `json:"currency,omitempty"`
+	Duration    string `json:"duration,omitempty"`
+	OperationID string `json:"operation_id,omitempty"`
 }
 
 func (h *ScenarioHandler) getScenario(writer http.ResponseWriter, request *http.Request) {
@@ -251,10 +253,12 @@ func (h *ScenarioHandler) writeScenario(writer http.ResponseWriter, status int, 
 	commands := make([]scenarioCommand, 0, len(scenario.Commands))
 	for _, command := range scenario.Commands {
 		commands = append(commands, scenarioCommand{
-			Type:      string(command.Type),
-			PaymentID: string(command.PaymentID),
-			Amount:    command.Amount.Amount(),
-			Currency:  string(command.Amount.Currency()),
+			Type:        string(command.Type),
+			PaymentID:   string(command.PaymentID),
+			Amount:      command.Amount.Amount(),
+			Currency:    string(command.Amount.Currency()),
+			Duration:    command.Duration.String(),
+			OperationID: command.OperationID,
 		})
 	}
 

@@ -1,14 +1,19 @@
 package http
 
 import (
+	"bytes"
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"proxynth/payment-sandbox/internal/api"
+	idempotencyapplication "proxynth/payment-sandbox/internal/idempotency/application"
 	paymentapplication "proxynth/payment-sandbox/internal/payment/application"
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 	"proxynth/payment-sandbox/internal/platform/observability"
@@ -17,12 +22,16 @@ import (
 const paymentPathPrefix = "/payments/"
 
 type Handler struct {
-	create    *paymentapplication.CreatePayment
-	get       *paymentapplication.GetPayment
-	authorize *paymentapplication.AuthorizePayment
-	capture   *paymentapplication.CapturePayment
-	refund    *paymentapplication.RefundPayment
-	cancel    *paymentapplication.CancelPayment
+	create      *paymentapplication.CreatePayment
+	get         *paymentapplication.GetPayment
+	authorize   *paymentapplication.AuthorizePayment
+	capture     *paymentapplication.CapturePayment
+	refund      *paymentapplication.RefundPayment
+	cancel      *paymentapplication.CancelPayment
+	idempotency idempotencyapplication.Repository
+	transaction interface {
+		WithinContext(context.Context, func(context.Context) error) error
+	}
 }
 
 func NewHandler(repository paymentapplication.Repository) (*Handler, error) {
@@ -30,28 +39,152 @@ func NewHandler(repository paymentapplication.Repository) (*Handler, error) {
 }
 
 func NewHandlerWithPublisher(repository paymentapplication.Repository, publisher paymentapplication.EventPublisher) (*Handler, error) {
+	return NewHandlerWithPublisherAndIdempotencyAndTransaction(repository, publisher, nil, nil)
+}
+
+func NewHandlerWithPublisherAndIdempotency(repository paymentapplication.Repository, publisher paymentapplication.EventPublisher, idempotency idempotencyapplication.Repository) (*Handler, error) {
+	return NewHandlerWithPublisherAndIdempotencyAndTransaction(repository, publisher, idempotency, nil)
+}
+
+func NewHandlerWithPublisherAndIdempotencyAndTransaction(repository paymentapplication.Repository, publisher paymentapplication.EventPublisher, idempotency idempotencyapplication.Repository, transaction interface {
+	WithinContext(context.Context, func(context.Context) error) error
+}) (*Handler, error) {
 	if repository == nil {
 		return nil, ErrNilRepository
 	}
 
 	return &Handler{
-		create:    paymentapplication.NewCreatePaymentWithPublisher(repository, publisher),
-		get:       paymentapplication.NewGetPayment(repository),
-		authorize: paymentapplication.NewAuthorizePaymentWithPublisher(repository, publisher),
-		capture:   paymentapplication.NewCapturePaymentWithPublisher(repository, publisher),
-		refund:    paymentapplication.NewRefundPaymentWithPublisher(repository, publisher),
-		cancel:    paymentapplication.NewCancelPaymentWithPublisher(repository, publisher),
+		create:      paymentapplication.NewCreatePaymentWithPublisher(repository, publisher),
+		get:         paymentapplication.NewGetPayment(repository),
+		authorize:   paymentapplication.NewAuthorizePaymentWithPublisher(repository, publisher),
+		capture:     paymentapplication.NewCapturePaymentWithPublisher(repository, publisher),
+		refund:      paymentapplication.NewRefundPaymentWithPublisher(repository, publisher),
+		cancel:      paymentapplication.NewCancelPaymentWithPublisher(repository, publisher),
+		idempotency: idempotency,
+		transaction: transaction,
 	}, nil
 }
 
 func (h *Handler) Register(server *api.Server) error {
-	if err := server.Handle(http.MethodPost, "/payments", http.HandlerFunc(h.createPayment)); err != nil {
+	wrapped := h.transactional(h.idempotent(http.HandlerFunc(h.createPayment)))
+	if err := server.Handle(http.MethodPost, "/payments", wrapped); err != nil {
 		return err
 	}
 	if err := server.HandlePrefix(http.MethodGet, paymentPathPrefix, http.HandlerFunc(h.getPayment)); err != nil {
 		return err
 	}
-	return server.HandlePrefix(http.MethodPost, paymentPathPrefix, http.HandlerFunc(h.command))
+	return server.HandlePrefix(http.MethodPost, paymentPathPrefix, h.transactional(h.idempotent(http.HandlerFunc(h.command))))
+}
+
+func (h *Handler) transactional(next http.Handler) http.Handler {
+	if h.transaction == nil {
+		return next
+	}
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		buffer := newBufferedWriter()
+		err := h.transaction.WithinContext(request.Context(), func(ctx context.Context) error {
+			next.ServeHTTP(buffer, request.WithContext(ctx))
+			if buffer.status >= 500 {
+				return errors.New("payment request failed; transaction rolled back")
+			}
+			return nil
+		})
+		if err != nil {
+			api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		for name, values := range buffer.header {
+			for _, value := range values {
+				writer.Header().Add(name, value)
+			}
+		}
+		writer.WriteHeader(buffer.status)
+		_, _ = writer.Write(buffer.body.Bytes())
+	})
+}
+
+type bufferedWriter struct {
+	header http.Header
+	body   bytes.Buffer
+	status int
+}
+
+func newBufferedWriter() *bufferedWriter      { return &bufferedWriter{header: make(http.Header)} }
+func (w *bufferedWriter) Header() http.Header { return w.header }
+func (w *bufferedWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+func (w *bufferedWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.body.Write(data)
+}
+
+func (h *Handler) idempotent(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
+		if h.idempotency == nil || key == "" {
+			next.ServeHTTP(writer, request)
+			return
+		}
+		if len(key) > 255 {
+			api.WriteError(writer, http.StatusBadRequest, "invalid_request", "Idempotency-Key is too long")
+			return
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			api.WriteError(writer, http.StatusBadRequest, "invalid_request", "cannot read request body")
+			return
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		fingerprint := sha256.Sum256(append([]byte(request.Method+" "+request.URL.Path+"\n"), body...))
+		scope := request.Method + " " + request.URL.Path
+		record := idempotencyapplication.Record{Scope: scope, Key: key, Fingerprint: fmt.Sprintf("%x", fingerprint), Status: "processing"}
+		reserved, err := h.idempotency.Reserve(request.Context(), record)
+		if err != nil {
+			if errors.Is(err, idempotencyapplication.ErrFingerprintConflict) {
+				api.WriteError(writer, http.StatusConflict, "idempotency_conflict", err.Error())
+			} else {
+				api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
+			}
+			return
+		}
+		if !reserved {
+			existing, findErr := h.idempotency.Find(request.Context(), scope, key)
+			if findErr != nil {
+				api.WriteError(writer, http.StatusInternalServerError, "internal_error", findErr.Error())
+				return
+			}
+			if existing.Status != "completed" {
+				api.WriteError(writer, http.StatusConflict, "idempotency_in_progress", "an identical request is already being processed")
+				return
+			}
+			writer.WriteHeader(existing.ResponseStatus)
+			_, _ = writer.Write(existing.ResponseBody)
+			return
+		}
+		buffer := newBufferedWriter()
+		next.ServeHTTP(buffer, request)
+		if buffer.status >= 500 {
+			_ = h.idempotency.Release(request.Context(), scope, key, record.Fingerprint)
+		} else {
+			record.Status, record.ResponseStatus, record.ResponseBody = "completed", buffer.status, append([]byte(nil), buffer.body.Bytes()...)
+			if err := h.idempotency.Complete(request.Context(), record); err != nil {
+				api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
+				return
+			}
+		}
+		for name, values := range buffer.header {
+			for _, value := range values {
+				writer.Header().Add(name, value)
+			}
+		}
+		writer.WriteHeader(buffer.status)
+		_, _ = writer.Write(buffer.body.Bytes())
+	})
 }
 
 type createPaymentRequest struct {
@@ -178,7 +311,7 @@ func withRequestMetadata(writer http.ResponseWriter, request *http.Request) (*ht
 	correlationID := strings.TrimSpace(request.Header.Get("X-Correlation-ID"))
 	if correlationID == "" {
 		var err error
-		correlationID, err = observability.NewCorrelationID()
+		correlationID, err = derivedCorrelationID(request)
 		if err != nil {
 			api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
 			return request, false
@@ -190,6 +323,27 @@ func withRequestMetadata(writer http.ResponseWriter, request *http.Request) (*ht
 	}
 	writer.Header().Set("X-Correlation-ID", correlationID)
 	return request.WithContext(observability.WithMetadata(request.Context(), observability.Metadata{CorrelationID: correlationID})), true
+}
+
+func derivedCorrelationID(request *http.Request) (string, error) {
+	var body []byte
+	if request.Body != nil {
+		var err error
+		body, err = io.ReadAll(request.Body)
+		if err != nil {
+			return "", fmt.Errorf("read request body for correlation id: %w", err)
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(request.Method))
+	_, _ = hash.Write([]byte(" "))
+	_, _ = hash.Write([]byte(request.URL.EscapedPath()))
+	_, _ = hash.Write([]byte("?"))
+	_, _ = hash.Write([]byte(request.URL.RawQuery))
+	_, _ = hash.Write([]byte("\n"))
+	_, _ = hash.Write(body)
+	return "derived-" + fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 func decodeJSON(writer http.ResponseWriter, request *http.Request, destination any) bool {

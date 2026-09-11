@@ -10,6 +10,21 @@ type TransactionManager struct {
 	db *sql.DB
 }
 
+type txContextKey struct{}
+
+func WithTx(ctx context.Context, tx *sql.Tx) context.Context {
+	return context.WithValue(ctx, txContextKey{}, tx)
+}
+
+func TxFromContext(ctx context.Context) *sql.Tx {
+	tx, _ := ctx.Value(txContextKey{}).(*sql.Tx)
+	return tx
+}
+
+func (m *TransactionManager) WithinContext(ctx context.Context, fn func(context.Context) error) error {
+	return m.WithinTransaction(ctx, func(tx *sql.Tx) error { return fn(WithTx(ctx, tx)) })
+}
+
 func NewTransactionManager(db *sql.DB) *TransactionManager {
 	return &TransactionManager{
 		db: db,

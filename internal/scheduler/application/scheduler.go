@@ -81,6 +81,7 @@ func NewScheduler(
 
 func (s *Scheduler) Tick(ctx context.Context) error {
 	now := s.businessClock.Now().UTC()
+	operationalNow := s.operationalClock.Now().UTC()
 	jobs, err := s.repository.FindExecutable(ctx, now, s.batchSize)
 	if err != nil {
 		return err
@@ -93,8 +94,8 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 			continue
 		}
 
-		leaseExpiresAt := now.Add(s.leaseDuration)
-		acquired, err := s.repository.Acquire(ctx, job.ID(), s.owner, leaseExpiresAt, s.operationalClock.Now().UTC())
+		leaseExpiresAt := operationalNow.Add(s.leaseDuration)
+		acquired, err := s.repository.Acquire(ctx, job.ID(), s.owner, leaseExpiresAt, operationalNow)
 		if err != nil {
 			tickErrors = append(tickErrors, err)
 			continue

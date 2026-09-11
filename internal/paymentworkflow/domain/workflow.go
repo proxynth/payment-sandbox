@@ -7,6 +7,8 @@ import (
 	paymentdomain "proxynth/payment-sandbox/internal/payment/domain"
 )
 
+var ErrVersionConflict = errors.New("saga version conflict")
+
 type ID string
 
 type Step string

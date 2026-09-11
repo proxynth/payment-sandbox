@@ -28,7 +28,7 @@ func (r *Repository) Save(ctx context.Context, instance domain.Instance) error {
 	if err != nil {
 		return fmt.Errorf("marshal compensation saga steps: %w", err)
 	}
-	_, err = r.db.ExecContext(ctx, `
+	result, err := r.db.ExecContext(ctx, `
 		INSERT INTO saga_instances(id, payment_id, payload, status, current_step, completed_steps, compensation_steps, seed, version, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		ON CONFLICT(id) DO UPDATE SET
@@ -41,6 +41,11 @@ func (r *Repository) Save(ctx context.Context, instance domain.Instance) error {
 		string(completed), string(compensation), instance.Seed, instance.Version, instance.UpdatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("save saga %q: %w", instance.ID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("inspect save saga %q result: %w", instance.ID, err)
+	} else if affected != 1 {
+		return fmt.Errorf("save saga %q: %w", instance.ID, domain.ErrVersionConflict)
 	}
 	return nil
 }

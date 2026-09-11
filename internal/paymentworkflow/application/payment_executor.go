@@ -50,6 +50,9 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message paymentworkflowdo
 			return Execution{}, err
 		}
 	}
+	if stepAlreadyApplied(payment, message.Step, input) {
+		return Execution{Outcome: OutcomeSucceeded}, nil
+	}
 
 	snapshot := providerdomain.PaymentSnapshot{
 		ID: payment.ID(), Amount: payment.Amount(), Status: payment.Status(), Version: payment.Version(),
@@ -119,4 +122,22 @@ func (e *PaymentExecutor) Execute(ctx context.Context, message paymentworkflowdo
 		return Execution{}, err
 	}
 	return Execution{Outcome: OutcomeSucceeded}, nil
+}
+
+func stepAlreadyApplied(payment *paymentdomain.Payment, step paymentworkflowdomain.Step, input struct {
+	Amount   int64                  `json:"amount"`
+	Currency paymentdomain.Currency `json:"currency"`
+}) bool {
+	switch step {
+	case paymentworkflowdomain.StepAuthorize:
+		return payment.AuthorizedAmount().Amount() == payment.Amount().Amount()
+	case paymentworkflowdomain.StepCapture:
+		return input.Amount > 0 && payment.CapturedAmount().Amount() >= input.Amount
+	case paymentworkflowdomain.StepRefund:
+		return input.Amount > 0 && payment.RefundedAmount().Amount() >= input.Amount
+	case paymentworkflowdomain.StepCancel:
+		return payment.Status() == paymentdomain.StatusCancelled
+	default:
+		return false
+	}
 }

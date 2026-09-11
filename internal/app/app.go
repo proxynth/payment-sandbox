@@ -15,6 +15,7 @@ import (
 
 	administrationhttp "proxynth/payment-sandbox/internal/administration/adapters/http"
 	"proxynth/payment-sandbox/internal/api"
+	idempotencysqlite "proxynth/payment-sandbox/internal/idempotency/adapters/sqlite"
 	paymenthttp "proxynth/payment-sandbox/internal/payment/adapters/http"
 	paymentsqlite "proxynth/payment-sandbox/internal/payment/adapters/sqlite"
 	paymentworkflowsqlite "proxynth/payment-sandbox/internal/paymentworkflow/adapters/sqlite"
@@ -29,14 +30,14 @@ import (
 	providerdomain "proxynth/payment-sandbox/internal/provider/domain"
 	"proxynth/payment-sandbox/internal/provider/fake"
 	"proxynth/payment-sandbox/internal/provider/stripe"
-	replaymemory "proxynth/payment-sandbox/internal/replay/adapters/memory"
+	replaysqlite "proxynth/payment-sandbox/internal/replay/adapters/sqlite"
 	replayapplication "proxynth/payment-sandbox/internal/replay/application"
 	schedulersqlite "proxynth/payment-sandbox/internal/scheduler/adapters/sqlite"
 	schedulerapplication "proxynth/payment-sandbox/internal/scheduler/application"
 	schedulerdomain "proxynth/payment-sandbox/internal/scheduler/domain"
 	webhookclient "proxynth/payment-sandbox/internal/webhook/adapters/client"
 	webhookhttp "proxynth/payment-sandbox/internal/webhook/adapters/http"
-	webhookmemory "proxynth/payment-sandbox/internal/webhook/adapters/memory"
+	webhooksqlite "proxynth/payment-sandbox/internal/webhook/adapters/sqlite"
 	webhookapplication "proxynth/payment-sandbox/internal/webhook/application"
 )
 
@@ -105,9 +106,9 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 
 	payments := paymentsqlite.NewRepository(database)
 	events := paymentsqlite.NewEventLogRepository(database)
-	webhooks := webhookmemory.NewRepository()
-	scenarios := replaymemory.NewRepository()
-	virtualClock, err := clock.NewVirtualClock(time.Now())
+	webhooks := webhooksqlite.NewRepository(database)
+	scenarios := replaysqlite.NewRepository(database)
+	virtualClock, err := clock.NewPersistentVirtualClock(time.Now(), sqlite.NewRuntimeStateStore(database), "business_virtual_time")
 	if err != nil {
 		return nil, fmt.Errorf("create virtual clock: %w", err)
 	}
@@ -149,11 +150,15 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create saga executor: %w", err)
 	}
-	outboundCallback, err := webhookapplication.NewOutboundCallback(webhooks, webhookclient.New())
+	outboundCallback, err := webhookapplication.NewOutboundCallbackWithAudit(webhooks, webhookclient.New(), webhooksqlite.NewDeliveryAuditRepository(database))
 	if err != nil {
 		return nil, fmt.Errorf("create webhook delivery handler: %w", err)
 	}
-	worker, err := schedulerapplication.NewWorker(jobRepository, map[schedulerdomain.JobType]schedulerapplication.JobHandler{
+	retryPolicy, err := schedulerdomain.NewExponentialBackoffPolicy(3, 30*time.Second, 5*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("create scheduler retry policy: %w", err)
+	}
+	worker, err := schedulerapplication.NewWorkerWithRetry(jobRepository, map[schedulerdomain.JobType]schedulerapplication.JobHandler{
 		"saga.step": func(ctx context.Context, payload []byte) error {
 			var message paymentworkflowdomain.Message
 			if err := json.Unmarshal(payload, &message); err != nil {
@@ -162,7 +167,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 			return workflowOrchestrator.Handle(ctx, message, workflowExecutor)
 		},
 		webhookapplication.DeliveryJobType: outboundCallback.Execute,
-	})
+	}, retryPolicy, virtualClock)
 	if err != nil {
 		return nil, fmt.Errorf("create scheduler worker: %w", err)
 	}
@@ -171,7 +176,7 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		return nil, fmt.Errorf("create scheduler: %w", err)
 	}
 
-	paymentHandler, err := paymenthttp.NewHandlerWithPublisher(payments, eventPublisher)
+	paymentHandler, err := paymenthttp.NewHandlerWithPublisherAndIdempotencyAndTransaction(payments, eventPublisher, idempotencysqlite.NewRepository(database), sqlite.NewTransactionManager(database))
 	if err != nil {
 		return nil, fmt.Errorf("create payment handler: %w", err)
 	}
@@ -195,6 +200,14 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create diagnostics handler: %w", err)
 	}
+	webhookAuditHandler, err := administrationhttp.NewWebhookAuditHandler(webhooksqlite.NewDeliveryAuditRepository(database))
+	if err != nil {
+		return nil, fmt.Errorf("create webhook audit handler: %w", err)
+	}
+	runtimeHistoryHandler, err := administrationhttp.NewRuntimeHistoryHandler(sqlite.NewTransactionManager(database), events, jobRepository, webhooksqlite.NewDeliveryAuditRepository(database))
+	if err != nil {
+		return nil, fmt.Errorf("create runtime history handler: %w", err)
+	}
 
 	registrations := []struct {
 		name     string
@@ -206,6 +219,8 @@ func compose(cfg config.Config, database *sql.DB) (*application, error) {
 		{"scenario", func() error { return scenarioHandler.Register(server, cfg.Admin.Token) }},
 		{"timeline", func() error { return timelineHandler.Register(server, cfg.Admin.Token) }},
 		{"diagnostics", func() error { return diagnosticsHandler.Register(server, cfg.Admin.Token) }},
+		{"webhook audit", func() error { return webhookAuditHandler.Register(server, cfg.Admin.Token) }},
+		{"runtime history", func() error { return runtimeHistoryHandler.Register(server, cfg.Admin.Token) }},
 	}
 	for _, registration := range registrations {
 		if err := registration.register(); err != nil {
