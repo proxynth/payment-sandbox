@@ -30,6 +30,18 @@ func NewEventLogRepository(db eventExecutor) *EventLogRepository {
 }
 
 func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEvent) error {
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		return r.append(ctx, tx, event)
+	}
+	if db, ok := r.db.(*sql.DB); ok {
+		return persistencesqlite.NewTransactionManager(db).WithinContext(ctx, func(txctx context.Context) error {
+			return r.append(txctx, persistencesqlite.TxFromContext(txctx), event)
+		})
+	}
+	return r.append(ctx, r.db, event)
+}
+
+func (r *EventLogRepository) append(ctx context.Context, exec eventExecutor, event domain.BusinessEvent) error {
 	if err := event.Validate(); err != nil {
 		return err
 	}
@@ -48,10 +60,6 @@ func (r *EventLogRepository) Append(ctx context.Context, event domain.BusinessEv
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`
 
-	exec := r.db
-	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
-		exec = tx
-	}
 	runtimeSequence, err := persistencesqlite.NextRuntimeSequence(ctx, exec)
 	if err != nil {
 		return fmt.Errorf("allocate runtime sequence for event %q: %w", event.ID(), err)
