@@ -26,16 +26,24 @@ func formatTimestamp(at time.Time) string { return at.UTC().Format(sqliteTimesta
 func NewRepository(db executor) *Repository { return &Repository{db: db} }
 
 func (r *Repository) Save(ctx context.Context, job *domain.Job) error {
+	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+		return r.save(ctx, tx, job)
+	}
+	if db, ok := r.db.(*sql.DB); ok {
+		return persistencesqlite.NewTransactionManager(db).WithinContext(ctx, func(txctx context.Context) error {
+			return r.save(txctx, persistencesqlite.TxFromContext(txctx), job)
+		})
+	}
+	return r.save(ctx, r.db, job)
+}
+
+func (r *Repository) save(ctx context.Context, exec executor, job *domain.Job) error {
 	if job == nil {
 		return fmt.Errorf("nil scheduler job")
 	}
 	leaseExpires := ""
 	if !job.LeaseExpiresAt().IsZero() {
 		leaseExpires = formatTimestamp(job.LeaseExpiresAt())
-	}
-	exec := r.db
-	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
-		exec = tx
 	}
 	result, err := exec.ExecContext(ctx, `
 		INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts,aggregate_id,causation_id)
@@ -83,10 +91,22 @@ func (r *Repository) FindExecutable(ctx context.Context, at time.Time, limit int
 }
 
 func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string, expiresAt, leaseCheckAt time.Time) (*domain.Job, error) {
-	exec := r.db
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
-		exec = tx
+		return r.acquire(ctx, tx, id, owner, expiresAt, leaseCheckAt)
 	}
+	if db, ok := r.db.(*sql.DB); ok {
+		var job *domain.Job
+		err := persistencesqlite.NewTransactionManager(db).WithinContext(ctx, func(txctx context.Context) error {
+			var err error
+			job, err = r.acquire(txctx, persistencesqlite.TxFromContext(txctx), id, owner, expiresAt, leaseCheckAt)
+			return err
+		})
+		return job, err
+	}
+	return r.acquire(ctx, r.db, id, owner, expiresAt, leaseCheckAt)
+}
+
+func (r *Repository) acquire(ctx context.Context, exec executor, id domain.JobID, owner string, expiresAt, leaseCheckAt time.Time) (*domain.Job, error) {
 	result, err := exec.ExecContext(ctx, `UPDATE scheduler_jobs SET status=$1, lease_owner=$2, lease_expires_at=$3 WHERE id=$4 AND (status IN ($5,$6) OR (status IN ($7,$8) AND lease_expires_at <> '' AND lease_expires_at <= $9))`, domain.JobLeased, owner, formatTimestamp(expiresAt), id, domain.JobPending, domain.JobFailed, domain.JobLeased, domain.JobRunning, formatTimestamp(leaseCheckAt))
 	if err != nil {
 		return nil, fmt.Errorf("acquire job %q: %w", id, err)

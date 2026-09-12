@@ -23,44 +23,59 @@ func (r *DeliveryAuditRepository) Record(ctx context.Context, attempt applicatio
 		return fmt.Errorf("invalid webhook delivery audit attempt")
 	}
 	if attempt.Outcome == application.DeliveryStarted {
-		exec := r.executor(ctx)
-		runtimeSequence, err := persistencesqlite.NextRuntimeSequence(ctx, exec)
-		if err != nil {
-			return fmt.Errorf("allocate runtime sequence for webhook delivery job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
+		if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
+			return r.recordStart(ctx, tx, attempt)
 		}
-		result, err := exec.ExecContext(ctx, `
+		if db, ok := r.db.(*sql.DB); ok {
+			return persistencesqlite.NewTransactionManager(db).WithinContext(ctx, func(txctx context.Context) error {
+				return r.recordStart(txctx, persistencesqlite.TxFromContext(txctx), attempt)
+			})
+		}
+		return r.recordStart(ctx, r.db, attempt)
+	}
+	return r.recordTerminal(ctx, r.executor(ctx), attempt)
+}
+
+func (r *DeliveryAuditRepository) recordStart(ctx context.Context, exec executor, attempt application.DeliveryAttempt) error {
+	runtimeSequence, err := persistencesqlite.NextRuntimeSequence(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("allocate runtime sequence for webhook delivery job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
+	}
+	result, err := exec.ExecContext(ctx, `
 		INSERT INTO webhook_delivery_audit(
 			job_id, attempt, endpoint_id, correlation_id, causation_id, outcome, http_status, error, runtime_sequence
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(job_id, attempt) DO NOTHING`,
-			attempt.JobID, attempt.Attempt, attempt.EndpointID, attempt.CorrelationID,
-			attempt.CausationID, attempt.Outcome, attempt.HTTPStatus, attempt.Error, runtimeSequence)
-		if err != nil {
-			return fmt.Errorf("record webhook delivery audit start for job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
-		}
-		changed, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("record webhook delivery audit start for job %q attempt %d rows affected: %w", attempt.JobID, attempt.Attempt, err)
-		}
-		if changed == 1 {
-			return nil
-		}
-		var endpointID, correlationID, causationID string
-		if err := r.executor(ctx).QueryRowContext(ctx, `
-			SELECT endpoint_id, correlation_id, causation_id
-			FROM webhook_delivery_audit WHERE job_id = ? AND attempt = ?`, attempt.JobID, attempt.Attempt).
-			Scan(&endpointID, &correlationID, &causationID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("record webhook delivery audit start for job %q attempt %d: record disappeared", attempt.JobID, attempt.Attempt)
-			}
-			return fmt.Errorf("inspect webhook delivery audit start for job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
-		}
-		if endpointID != string(attempt.EndpointID) || correlationID != attempt.CorrelationID || causationID != attempt.CausationID {
-			return fmt.Errorf("record webhook delivery audit start for job %q attempt %d: immutable metadata already recorded", attempt.JobID, attempt.Attempt)
-		}
+		attempt.JobID, attempt.Attempt, attempt.EndpointID, attempt.CorrelationID,
+		attempt.CausationID, attempt.Outcome, attempt.HTTPStatus, attempt.Error, runtimeSequence)
+	if err != nil {
+		return fmt.Errorf("record webhook delivery audit start for job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("record webhook delivery audit start for job %q attempt %d rows affected: %w", attempt.JobID, attempt.Attempt, err)
+	}
+	if changed == 1 {
 		return nil
 	}
-	result, err := r.executor(ctx).ExecContext(ctx, `
+	var endpointID, correlationID, causationID string
+	if err := exec.QueryRowContext(ctx, `
+			SELECT endpoint_id, correlation_id, causation_id
+			FROM webhook_delivery_audit WHERE job_id = ? AND attempt = ?`, attempt.JobID, attempt.Attempt).
+		Scan(&endpointID, &correlationID, &causationID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("record webhook delivery audit start for job %q attempt %d: record disappeared", attempt.JobID, attempt.Attempt)
+		}
+		return fmt.Errorf("inspect webhook delivery audit start for job %q attempt %d: %w", attempt.JobID, attempt.Attempt, err)
+	}
+	if endpointID != string(attempt.EndpointID) || correlationID != attempt.CorrelationID || causationID != attempt.CausationID {
+		return fmt.Errorf("record webhook delivery audit start for job %q attempt %d: immutable metadata already recorded", attempt.JobID, attempt.Attempt)
+	}
+	return nil
+}
+
+func (r *DeliveryAuditRepository) recordTerminal(ctx context.Context, exec executor, attempt application.DeliveryAttempt) error {
+	result, err := exec.ExecContext(ctx, `
 		UPDATE webhook_delivery_audit
 		SET outcome = ?, http_status = ?, error = ?
 		WHERE job_id = ? AND attempt = ? AND outcome = ?`,
@@ -77,7 +92,7 @@ func (r *DeliveryAuditRepository) Record(ctx context.Context, attempt applicatio
 		var outcome string
 		var status int
 		var recordedError string
-		if err := r.executor(ctx).QueryRowContext(ctx, `
+		if err := exec.QueryRowContext(ctx, `
 			SELECT endpoint_id, correlation_id, causation_id, outcome, http_status, error
 			FROM webhook_delivery_audit WHERE job_id = ? AND attempt = ?`, attempt.JobID, attempt.Attempt).
 			Scan(&endpointID, &correlationID, &causationID, &outcome, &status, &recordedError); err != nil {

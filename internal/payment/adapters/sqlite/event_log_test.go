@@ -62,7 +62,8 @@ func TestEventLogRepository_OrdersEqualTimestampsDeterministically(t *testing.T)
 }
 
 func TestEventLogRepository_RejectsDuplicateEventID(t *testing.T) {
-	repository := NewEventLogRepository(newTestDatabase(t))
+	db := newTestDatabase(t)
+	repository := NewEventLogRepository(db)
 	event := newEvent(t, "event-duplicate", "payment-duplicate", domain.EventPaymentCreated, time.Unix(1, 0), 1)
 	if err := repository.Append(context.Background(), event); err != nil {
 		t.Fatalf("first Append() error = %v", err)
@@ -71,6 +72,14 @@ func TestEventLogRepository_RejectsDuplicateEventID(t *testing.T) {
 	err := repository.Append(context.Background(), event)
 	if !errors.Is(err, application.ErrEventAlreadyExists) {
 		t.Fatalf("second Append() error = %v, want %v", err, application.ErrEventAlreadyExists)
+	}
+
+	var sequence uint64
+	if err := db.QueryRowContext(context.Background(), `SELECT value FROM runtime_sequence WHERE id = 1`).Scan(&sequence); err != nil {
+		t.Fatalf("read runtime sequence: %v", err)
+	}
+	if sequence != 1 {
+		t.Fatalf("runtime sequence after rejected duplicate = %d, want 1", sequence)
 	}
 }
 
