@@ -7,15 +7,15 @@
 3. Synchronize with the latest `main`:
 
    ```bash
-   git fetch origin main
-   git switch main
-   git pull --ff-only origin main
+   rtk git fetch origin main
+   rtk git switch main
+   rtk git pull --ff-only origin main
    ```
 
 4. Create a feature branch from the updated `main`:
 
    ```bash
-   git switch -c feature/<descriptive-name>
+   rtk git switch -c feature/<descriptive-name>
    ```
 
    Feature branch names must be descriptive and must not contain Linear ticket numbers.
@@ -35,9 +35,9 @@
 Before committing, run all three commands from the repository root:
 
 ```bash
-make fmt
-make check
-make test-race
+rtk proxy make fmt
+rtk proxy make check
+rtk proxy make test-race
 ```
 
 Resolve every formatting, linting, build, test, and race-detector failure before continuing.
@@ -63,3 +63,5 @@ Resolve every formatting, linting, build, test, and race-detector failure before
 5. Wait for the user to report that the pull request was merged.
 6. After notification, fetch `main`, verify that it contains the merge commit, and confirm the working tree state.
 7. Move the ticket to **Done** only after the merge is confirmed; the pull request link should already exist.
+
+@RTK.md
