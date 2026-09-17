@@ -7,13 +7,38 @@ import (
 	"testing"
 	"time"
 
+	idempotencysqlite "proxynth/payment-sandbox/internal/idempotency/adapters/sqlite"
 	"proxynth/payment-sandbox/internal/platform/config"
 	"proxynth/payment-sandbox/internal/platform/persistence/sqlite"
 
 	"github.com/pressly/goose/v3"
 )
 
-const latestVersion int64 = 15
+const latestVersion int64 = 16
+
+func TestUp_PreservesLegacyIdempotencyRecordWithoutResponseHeaders(t *testing.T) {
+	db := openTestDatabase(t)
+	goose.SetBaseFS(files)
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.UpTo(db, "sql", 15); err != nil {
+		t.Fatalf("migrate to version 15: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `INSERT INTO idempotency_records(scope,key,fingerprint,status,response_status,response_body) VALUES ('POST /payments','legacy-key','fingerprint','completed',201,'legacy-body')`); err != nil {
+		t.Fatalf("insert legacy idempotency record: %v", err)
+	}
+	if err := Up(db); err != nil {
+		t.Fatalf("upgrade legacy database: %v", err)
+	}
+	got, err := idempotencysqlite.NewRepository(db).Find(context.Background(), "POST /payments", "legacy-key")
+	if err != nil {
+		t.Fatalf("find migrated idempotency record: %v", err)
+	}
+	if got.Status != "completed" || got.ResponseStatus != 201 || string(got.ResponseBody) != "legacy-body" || len(got.ResponseHeaders) != 0 {
+		t.Fatalf("migrated record = %+v, want legacy status/body and no headers", got)
+	}
+}
 
 func TestUp_AppliesMigrations(t *testing.T) {
 	db := openTestDatabase(t)

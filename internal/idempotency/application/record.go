@@ -3,12 +3,13 @@ package application
 import "context"
 
 type Record struct {
-	Scope          string
-	Key            string
-	Fingerprint    string
-	Status         string
-	ResponseStatus int
-	ResponseBody   []byte
+	Scope           string
+	Key             string
+	Fingerprint     string
+	Status          string
+	ResponseStatus  int
+	ResponseBody    []byte
+	ResponseHeaders map[string][]string
 }
 
 type Repository interface {

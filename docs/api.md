@@ -34,6 +34,12 @@ durable saga and webhook jobs, and outbound callbacks. `X-Causation-ID` is
 managed by the application for derived work and should not be supplied by the
 client.
 
+Payment mutations may also provide an `Idempotency-Key`. Repeating a completed
+request with the same key and request returns its original status, body, and
+stable response metadata (`Content-Type`, `Location` when present, and the
+original operation's `X-Correlation-ID`). Reusing the key with different
+request data returns `409 Conflict`.
+
 ## Health
 
 | Method | Route | Purpose |
