@@ -24,17 +24,18 @@ const (
 )
 
 type Job struct {
-	id             JobID
-	jobType        JobType
-	payload        []byte
-	scheduledAt    time.Time
-	nextAttemptAt  time.Time
-	status         JobStatus
-	leaseOwner     string
-	leaseExpiresAt time.Time
-	attempts       uint64
-	aggregateID    string
-	causationID    string
+	id              JobID
+	jobType         JobType
+	payload         []byte
+	scheduledAt     time.Time
+	nextAttemptAt   time.Time
+	status          JobStatus
+	leaseOwner      string
+	leaseExpiresAt  time.Time
+	leaseGeneration uint64
+	attempts        uint64
+	aggregateID     string
+	causationID     string
 }
 
 func NewJob(
@@ -85,6 +86,7 @@ func Restore(
 	status JobStatus,
 	leaseOwner string,
 	leaseExpiresAt time.Time,
+	leaseGeneration uint64,
 	attempts uint64,
 	metadata ...JobMetadata,
 ) (Job, error) {
@@ -102,7 +104,7 @@ func Restore(
 	default:
 		return Job{}, ErrInvalidExecutionStatus
 	}
-	job := Job{id: id, jobType: jobType, payload: cloneBytes(payload), scheduledAt: scheduledAt.UTC(), nextAttemptAt: nextAttemptAt.UTC(), status: status, leaseOwner: leaseOwner, leaseExpiresAt: leaseExpiresAt.UTC(), attempts: attempts}
+	job := Job{id: id, jobType: jobType, payload: cloneBytes(payload), scheduledAt: scheduledAt.UTC(), nextAttemptAt: nextAttemptAt.UTC(), status: status, leaseOwner: leaseOwner, leaseExpiresAt: leaseExpiresAt.UTC(), leaseGeneration: leaseGeneration, attempts: attempts}
 	if len(metadata) > 0 {
 		job.aggregateID, job.causationID = metadata[0].AggregateID, metadata[0].CausationID
 	}
@@ -138,6 +140,7 @@ func (j *Job) Lease(owner string, expiresAt time.Time) error {
 	j.status = JobLeased
 	j.leaseOwner = owner
 	j.leaseExpiresAt = expiresAt.UTC()
+	j.leaseGeneration++
 
 	return nil
 }
@@ -221,6 +224,8 @@ func (j Job) LeaseOwner() string {
 func (j Job) LeaseExpiresAt() time.Time {
 	return j.leaseExpiresAt
 }
+
+func (j Job) LeaseGeneration() uint64 { return j.leaseGeneration }
 
 func (j Job) Attempts() uint64 {
 	return j.attempts

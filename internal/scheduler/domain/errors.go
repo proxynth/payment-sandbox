@@ -8,6 +8,7 @@ var (
 	ErrInvalidScheduledAt     = errors.New("invalid scheduled time")
 	ErrInvalidLeaseOwner      = errors.New("invalid lease owner")
 	ErrInvalidLeaseExpiry     = errors.New("invalid lease expiry")
+	ErrStaleLease             = errors.New("stale scheduler lease")
 	ErrInvalidRetryTime       = errors.New("invalid retry time")
 	ErrInvalidJobTransition   = errors.New("invalid job transition")
 	ErrInvalidExecutionStatus = errors.New("invalid job execution status")

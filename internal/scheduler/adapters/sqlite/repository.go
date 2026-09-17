@@ -46,20 +46,35 @@ func (r *Repository) save(ctx context.Context, exec executor, job *domain.Job) e
 		leaseExpires = formatTimestamp(job.LeaseExpiresAt())
 	}
 	result, err := exec.ExecContext(ctx, `
-		INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts,aggregate_id,causation_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,lease_generation,attempts,aggregate_id,causation_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		ON CONFLICT(id) DO UPDATE SET type=excluded.type,payload=excluded.payload,
 		 scheduled_at=excluded.scheduled_at,next_attempt_at=excluded.next_attempt_at,status=excluded.status,
-		 lease_owner=excluded.lease_owner,lease_expires_at=excluded.lease_expires_at,attempts=excluded.attempts,
+		 lease_owner=excluded.lease_owner,lease_expires_at=excluded.lease_expires_at,lease_generation=excluded.lease_generation,attempts=excluded.attempts,
 		 aggregate_id=excluded.aggregate_id,causation_id=excluded.causation_id
-		 WHERE scheduler_jobs.status <> $12`,
-		job.ID(), job.Type(), job.Payload(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.Status(), job.LeaseOwner(), leaseExpires, job.Attempts(), job.AggregateID(), job.CausationID(), domain.JobCompleted)
+		 WHERE scheduler_jobs.status <> $13 AND scheduler_jobs.lease_generation=excluded.lease_generation`,
+		job.ID(), job.Type(), job.Payload(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.Status(), job.LeaseOwner(), leaseExpires, job.LeaseGeneration(), job.Attempts(), job.AggregateID(), job.CausationID(), domain.JobCompleted)
 	if err != nil {
 		return fmt.Errorf("save scheduler job %q: %w", job.ID(), err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("save scheduler job %q rows affected: %w", job.ID(), err)
+	}
+	if changed == 0 {
+		current, err := r.find(ctx, job.ID())
+		if err != nil {
+			return fmt.Errorf("check scheduler job %q after fenced save: %w", job.ID(), err)
+		}
+		if current.Status() == domain.JobCompleted && job.Status() == domain.JobPending {
+			return nil
+		}
+		if current.LeaseGeneration() != job.LeaseGeneration() {
+			return fmt.Errorf("save scheduler job %q: %w", job.ID(), domain.ErrStaleLease)
+		}
+		if current.Status() == domain.JobCompleted {
+			return nil
+		}
 	}
 	if changed > 0 {
 		if err := appendAudit(ctx, exec, job); err != nil {
@@ -74,7 +89,7 @@ func (r *Repository) FindExecutable(ctx context.Context, at time.Time, limit int
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	rows, err := exec.QueryContext(ctx, `SELECT id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts,aggregate_id,causation_id FROM scheduler_jobs WHERE ((status IN ($1,$2) AND next_attempt_at <= $3) OR (status IN ($5,$6) AND lease_expires_at <> '' AND lease_expires_at <= $3)) ORDER BY next_attempt_at,id LIMIT $4`, domain.JobPending, domain.JobFailed, formatTimestamp(at), limit, domain.JobLeased, domain.JobRunning)
+	rows, err := exec.QueryContext(ctx, `SELECT id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,lease_generation,attempts,aggregate_id,causation_id FROM scheduler_jobs WHERE ((status IN ($1,$2) AND next_attempt_at <= $3) OR (status IN ($5,$6) AND lease_expires_at <> '' AND lease_expires_at <= $3)) ORDER BY next_attempt_at,id LIMIT $4`, domain.JobPending, domain.JobFailed, formatTimestamp(at), limit, domain.JobLeased, domain.JobRunning)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +122,7 @@ func (r *Repository) Acquire(ctx context.Context, id domain.JobID, owner string,
 }
 
 func (r *Repository) acquire(ctx context.Context, exec executor, id domain.JobID, owner string, expiresAt, leaseCheckAt time.Time) (*domain.Job, error) {
-	result, err := exec.ExecContext(ctx, `UPDATE scheduler_jobs SET status=$1, lease_owner=$2, lease_expires_at=$3 WHERE id=$4 AND (status IN ($5,$6) OR (status IN ($7,$8) AND lease_expires_at <> '' AND lease_expires_at <= $9))`, domain.JobLeased, owner, formatTimestamp(expiresAt), id, domain.JobPending, domain.JobFailed, domain.JobLeased, domain.JobRunning, formatTimestamp(leaseCheckAt))
+	result, err := exec.ExecContext(ctx, `UPDATE scheduler_jobs SET status=$1, lease_owner=$2, lease_expires_at=$3, lease_generation=lease_generation+1 WHERE id=$4 AND (status IN ($5,$6) OR (status IN ($7,$8) AND lease_expires_at <> '' AND lease_expires_at <= $9))`, domain.JobLeased, owner, formatTimestamp(expiresAt), id, domain.JobPending, domain.JobFailed, domain.JobLeased, domain.JobRunning, formatTimestamp(leaseCheckAt))
 	if err != nil {
 		return nil, fmt.Errorf("acquire job %q: %w", id, err)
 	}
@@ -137,9 +152,9 @@ func appendAudit(ctx context.Context, exec executor, job *domain.Job) error {
 	if !job.LeaseExpiresAt().IsZero() {
 		leaseExpires = formatTimestamp(job.LeaseExpiresAt())
 	}
-	snapshot := fmt.Sprintf("%s|%s|%x|%s|%s|%s|%d|%s|%s|%s|%s", job.ID(), job.Type(), job.Payload(), job.AggregateID(), job.CausationID(), job.Status(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires)
+	snapshot := fmt.Sprintf("%s|%s|%x|%s|%s|%s|%d|%d|%s|%s|%s|%s", job.ID(), job.Type(), job.Payload(), job.AggregateID(), job.CausationID(), job.Status(), job.LeaseGeneration(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires)
 	hash := sha256.Sum256([]byte(snapshot))
-	_, err = exec.ExecContext(ctx, `INSERT INTO scheduler_job_audit(id,job_id,job_type,payload,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, fmt.Sprintf("%x", hash[:]), job.ID(), job.Type(), job.Payload(), job.Status(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires, job.AggregateID(), job.CausationID(), runtimeSequence)
+	_, err = exec.ExecContext(ctx, `INSERT INTO scheduler_job_audit(id,job_id,job_type,payload,status,lease_generation,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, fmt.Sprintf("%x", hash[:]), job.ID(), job.Type(), job.Payload(), job.Status(), job.LeaseGeneration(), job.Attempts(), formatTimestamp(job.ScheduledAt()), formatTimestamp(job.NextAttemptAt()), job.LeaseOwner(), leaseExpires, job.AggregateID(), job.CausationID(), runtimeSequence)
 	if err != nil {
 		return fmt.Errorf("append scheduler audit for job %q: %w", job.ID(), err)
 	}
@@ -152,7 +167,7 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	rows, err := exec.QueryContext(ctx, `SELECT job_type,payload,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence FROM scheduler_job_audit WHERE job_id = ? ORDER BY CASE WHEN runtime_sequence = 0 THEN 1 ELSE 0 END, runtime_sequence, attempts, next_attempt_at, CASE status WHEN 'pending' THEN 1 WHEN 'leased' THEN 2 WHEN 'running' THEN 3 WHEN 'failed' THEN 4 WHEN 'completed' THEN 5 END, id`, id)
+	rows, err := exec.QueryContext(ctx, `SELECT job_type,payload,status,lease_generation,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence FROM scheduler_job_audit WHERE job_id = ? ORDER BY CASE WHEN runtime_sequence = 0 THEN 1 ELSE 0 END, runtime_sequence, attempts, next_attempt_at, CASE status WHEN 'pending' THEN 1 WHEN 'leased' THEN 2 WHEN 'running' THEN 3 WHEN 'failed' THEN 4 WHEN 'completed' THEN 5 END, id`, id)
 	if err != nil {
 		return nil, fmt.Errorf("list scheduler audit for job %q: %w", id, err)
 	}
@@ -161,8 +176,8 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 	for rows.Next() {
 		var jobType, status, scheduledAt, nextAttemptAt, leaseOwner, leaseExpiresAt, aggregateID, causationID string
 		var payload []byte
-		var attempts, runtimeSequence uint64
-		if err := rows.Scan(&jobType, &payload, &status, &attempts, &scheduledAt, &nextAttemptAt, &leaseOwner, &leaseExpiresAt, &aggregateID, &causationID, &runtimeSequence); err != nil {
+		var leaseGeneration, attempts, runtimeSequence uint64
+		if err := rows.Scan(&jobType, &payload, &status, &leaseGeneration, &attempts, &scheduledAt, &nextAttemptAt, &leaseOwner, &leaseExpiresAt, &aggregateID, &causationID, &runtimeSequence); err != nil {
 			return nil, fmt.Errorf("scan scheduler audit for job %q: %w", id, err)
 		}
 		scheduled, err := time.Parse(time.RFC3339Nano, scheduledAt)
@@ -180,7 +195,7 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 				return nil, err
 			}
 		}
-		snapshots = append(snapshots, domain.JobSnapshot{ID: id, Type: domain.JobType(jobType), Payload: append([]byte(nil), payload...), Status: domain.JobStatus(status), Attempts: attempts, ScheduledAt: scheduled, NextAttemptAt: next, LeaseOwner: leaseOwner, LeaseExpiresAt: lease, AggregateID: aggregateID, CausationID: causationID, RuntimeSequence: runtimeSequence})
+		snapshots = append(snapshots, domain.JobSnapshot{ID: id, Type: domain.JobType(jobType), Payload: append([]byte(nil), payload...), Status: domain.JobStatus(status), LeaseGeneration: leaseGeneration, Attempts: attempts, ScheduledAt: scheduled, NextAttemptAt: next, LeaseOwner: leaseOwner, LeaseExpiresAt: lease, AggregateID: aggregateID, CausationID: causationID, RuntimeSequence: runtimeSequence})
 	}
 	return snapshots, rows.Err()
 }
@@ -230,7 +245,7 @@ func (r *Repository) find(ctx context.Context, id domain.JobID) (*domain.Job, er
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	row := exec.QueryRowContext(ctx, `SELECT id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts,aggregate_id,causation_id FROM scheduler_jobs WHERE id=$1`, id)
+	row := exec.QueryRowContext(ctx, `SELECT id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,lease_generation,attempts,aggregate_id,causation_id FROM scheduler_jobs WHERE id=$1`, id)
 	return scan(row)
 }
 
@@ -239,8 +254,8 @@ type scanner interface{ Scan(...any) error }
 func scan(row scanner) (*domain.Job, error) {
 	var id, jobType, scheduled, nextAttempt, status, owner, leaseExpires, aggregateID, causationID string
 	var payload []byte
-	var attempts uint64
-	if err := row.Scan(&id, &jobType, &payload, &scheduled, &nextAttempt, &status, &owner, &leaseExpires, &attempts, &aggregateID, &causationID); err != nil {
+	var leaseGeneration, attempts uint64
+	if err := row.Scan(&id, &jobType, &payload, &scheduled, &nextAttempt, &status, &owner, &leaseExpires, &leaseGeneration, &attempts, &aggregateID, &causationID); err != nil {
 		return nil, err
 	}
 	scheduledAt, err := time.Parse(time.RFC3339Nano, scheduled)
@@ -258,7 +273,7 @@ func scan(row scanner) (*domain.Job, error) {
 			return nil, err
 		}
 	}
-	job, err := domain.Restore(domain.JobID(id), domain.JobType(jobType), payload, scheduledAt, nextAt, domain.JobStatus(status), owner, leaseAt, attempts, domain.JobMetadata{AggregateID: aggregateID, CausationID: causationID})
+	job, err := domain.Restore(domain.JobID(id), domain.JobType(jobType), payload, scheduledAt, nextAt, domain.JobStatus(status), owner, leaseAt, leaseGeneration, attempts, domain.JobMetadata{AggregateID: aggregateID, CausationID: causationID})
 	if err != nil {
 		return nil, err
 	}
