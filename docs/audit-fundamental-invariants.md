@@ -6,7 +6,7 @@ This document summarizes runtime behavior covered by the project's automated tes
 
 - **Payment changes and related records:** Covered payment transitions persist the payment state, event, and associated scheduler jobs atomically in SQLite.
 - **Idempotent requests:** Tests cover duplicate and concurrent requests on supported payment endpoints, including conflicts when a key is reused with different input.
-- **Durable jobs:** Scheduler jobs and lifecycle snapshots are persisted. Failed jobs and expired leases can be recovered through the tested retry and acquisition paths.
+- **Durable jobs:** Scheduler jobs and lifecycle snapshots are persisted. Configured retry policies bound total attempts; allowed retries return to pending at their scheduled time, and a terminal decision persists the job as `exhausted`. On recovery, a previously failed row is checked against the configured attempt budget before its handler runs. Exhausted jobs remain inspectable and are not executed again.
 - **Scheduler lease fencing:** Each SQLite acquisition advances a per-job lease generation. Worker state writes are accepted only for the generation currently stored; an expired worker cannot overwrite a later acquisition, even when the owner name is reused. The scheduler audit records the generation with each accepted snapshot.
 - **Deterministic scenarios:** Scenario runs use configured seeds and virtual time to produce reproducible provider outcomes within the simulation. This does not make the entire live runtime deterministic.
 - **Operational history:** Payment events, job lifecycle records, and webhook delivery attempts can be correlated. Causal metadata and runtime sequence values are available for records created after the corresponding database migrations.

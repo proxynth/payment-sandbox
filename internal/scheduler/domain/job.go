@@ -21,6 +21,8 @@ const (
 	JobRunning   JobStatus = "running"
 	JobCompleted JobStatus = "completed"
 	JobFailed    JobStatus = "failed"
+	// JobExhausted is a terminal failure for which no more automatic attempts are allowed.
+	JobExhausted JobStatus = "exhausted"
 )
 
 type Job struct {
@@ -100,7 +102,7 @@ func Restore(
 		return Job{}, ErrInvalidScheduledAt
 	}
 	switch status {
-	case JobPending, JobLeased, JobRunning, JobCompleted, JobFailed:
+	case JobPending, JobLeased, JobRunning, JobCompleted, JobFailed, JobExhausted:
 	default:
 		return Job{}, ErrInvalidExecutionStatus
 	}
@@ -175,6 +177,18 @@ func (j *Job) Fail() error {
 	j.status = JobFailed
 	j.clearLease()
 
+	return nil
+}
+
+// Exhaust makes a failed job terminal, or terminates an acquired legacy failure
+// after its retry policy reports that the attempt budget has already been used.
+func (j *Job) Exhaust() error {
+	if j.status != JobFailed && (j.status != JobLeased || j.attempts == 0) {
+		return invalidTransition(j.status, "exhaust")
+	}
+
+	j.status = JobExhausted
+	j.clearLease()
 	return nil
 }
 

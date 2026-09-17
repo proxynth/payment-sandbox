@@ -110,6 +110,28 @@ func TestJobLifecycle(t *testing.T) {
 	}
 }
 
+func TestJobExhaustsAfterFailure(t *testing.T) {
+	job := newTestJob(t)
+	if err := job.Lease("worker-1", time.Unix(20, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := job.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := job.Fail(); err != nil {
+		t.Fatal(err)
+	}
+	if err := job.Exhaust(); err != nil {
+		t.Fatalf("Exhaust() error = %v", err)
+	}
+	if job.Status() != JobExhausted || job.LeaseOwner() != "" || !job.LeaseExpiresAt().IsZero() {
+		t.Fatalf("exhausted job = status %q, owner %q, expiry %v", job.Status(), job.LeaseOwner(), job.LeaseExpiresAt())
+	}
+	if err := job.ScheduleRetry(time.Unix(30, 0)); !errors.Is(err, ErrInvalidJobTransition) {
+		t.Fatalf("ScheduleRetry() on exhausted job error = %v, want %v", err, ErrInvalidJobTransition)
+	}
+}
+
 func TestJobComplete_ClearsLease(t *testing.T) {
 	job := newTestJob(t)
 	if err := job.Lease("worker-1", time.Unix(20, 0)); err != nil {

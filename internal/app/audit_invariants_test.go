@@ -50,7 +50,12 @@ func auditContext() context.Context {
 }
 func auditDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sq.Open(context.Background(), config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "audit.db"), BusyTimeout: time.Second})
+	return auditDBAt(t, filepath.Join(t.TempDir(), "audit.db"))
+}
+
+func auditDBAt(t *testing.T, path string) *sql.DB {
+	t.Helper()
+	db, err := sq.Open(context.Background(), config.DatabaseConfig{Path: path, BusyTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,15 +341,163 @@ func TestAuditFailedJobCanRetry(t *testing.T) {
 	auditNewJob(t, repo, "failed", auditAt)
 	c := auditClock(t, auditAt)
 	calls := 0
-	worker, err := sa.NewWorker(repo, map[sd.JobType]sa.JobHandler{"audit": func(context.Context, []byte) error { calls++; return errors.New("transient") }})
+	policy, err := sd.NewFixedDelayPolicy(2, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := sa.NewWorkerWithRetry(repo, map[sd.JobType]sa.JobHandler{"audit": func(context.Context, []byte) error { calls++; return errors.New("transient") }}, policy, c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := auditScheduler(t, repo, runtimeDispatcher{worker}, c, c)
 	first := s.Tick(auditContext())
+	if first == nil {
+		t.Fatal("first Tick() error = nil, want handler failure")
+	}
+	if err := c.Advance(time.Minute); err != nil {
+		t.Fatal(err)
+	}
 	second := s.Tick(auditContext())
+	third := s.Tick(auditContext())
+	if second == nil {
+		t.Fatal("second Tick() error = nil, want handler failure")
+	}
+	if third != nil {
+		t.Fatalf("third Tick() after exhaustion = %v, want nil", third)
+	}
 	if calls != 2 {
-		t.Fatalf("handler calls=%d, first=%v, second=%v; want retry", calls, first, second)
+		t.Fatalf("handler calls=%d, first=%v, second=%v, third=%v; want one scheduled retry then exhaustion", calls, first, second, third)
+	}
+}
+
+// Invariant: a configured maximum attempt count remains terminal after restart.
+func TestAuditRetryLimitIsTerminalAfterRepositoryRestart(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "retry-limit.db")
+	db := auditDBAt(t, databasePath)
+	repo := ss.NewRepository(db)
+	auditNewJob(t, repo, "bounded-retry", auditAt)
+	c := auditClock(t, auditAt)
+	calls := 0
+	handlers := map[sd.JobType]sa.JobHandler{
+		"audit": func(context.Context, []byte) error {
+			calls++
+			return errors.New("transient")
+		},
+	}
+	policy, err := sd.NewExponentialBackoffPolicy(3, time.Minute, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := sa.NewWorkerWithRetry(repo, handlers, policy, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduler := auditScheduler(t, repo, runtimeDispatcher{worker}, c, c)
+
+	if err := scheduler.Tick(auditContext()); err == nil {
+		t.Fatal("first Tick() error = nil, want handler failure")
+	}
+	if err := c.Advance(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := scheduler.Tick(auditContext()); err == nil {
+		t.Fatal("second Tick() error = nil, want handler failure")
+	}
+	if err := c.Advance(2 * time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := scheduler.Tick(auditContext()); err == nil {
+		t.Fatal("third Tick() error = nil, want handler failure")
+	}
+	if calls != 3 {
+		t.Fatalf("handler calls after configured attempts = %d, want 3", calls)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db = auditDBAt(t, databasePath)
+	repo = ss.NewRepository(db)
+	worker, err = sa.NewWorkerWithRetry(repo, handlers, policy, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduler = auditScheduler(t, repo, runtimeDispatcher{worker}, c, c)
+	if err := scheduler.Tick(auditContext()); err != nil {
+		t.Fatalf("Tick() after restart and exhaustion = %v, want nil", err)
+	}
+	if calls != 3 {
+		t.Fatalf("handler calls after restart and exhausted retry budget = %d, want 3", calls)
+	}
+	if err := scheduler.Tick(auditContext()); err != nil {
+		t.Fatalf("Tick() after terminal failure = %v, want nil", err)
+	}
+	if calls != 3 {
+		t.Fatalf("handler calls after repeated tick = %d, want 3", calls)
+	}
+	snapshots, err := repo.ListAudit(auditContext(), "bounded-retry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) == 0 || snapshots[len(snapshots)-1].Status != sd.JobExhausted {
+		t.Fatalf("last lifecycle snapshot = %+v, want exhausted", snapshots)
+	}
+}
+
+func TestAuditLegacyFailedJobAtRetryLimitIsExhaustedWithoutExecution(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "legacy-retry-limit.db")
+	db := auditDBAt(t, databasePath)
+	repo := ss.NewRepository(db)
+	job := auditNewJob(t, repo, "legacy-bounded-retry", auditAt)
+	for attempt := 0; attempt < 3; attempt++ {
+		acquired, err := repo.Acquire(auditContext(), job.ID(), "legacy-worker", auditAt.Add(time.Minute), auditAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		job = acquired
+		if err := job.Start(); err != nil {
+			t.Fatal(err)
+		}
+		if err := job.Fail(); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.Save(auditContext(), job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db = auditDBAt(t, databasePath)
+	repo = ss.NewRepository(db)
+	c := auditClock(t, auditAt)
+	calls := 0
+	policy, err := sd.NewFixedDelayPolicy(3, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := sa.NewWorkerWithRetry(repo, map[sd.JobType]sa.JobHandler{
+		"audit": func(context.Context, []byte) error {
+			calls++
+			return errors.New("should not execute after retry exhaustion")
+		},
+	}, policy, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduler := auditScheduler(t, repo, runtimeDispatcher{worker}, c, c)
+	if err := scheduler.Tick(auditContext()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("handler calls for legacy exhausted job = %d, want 0", calls)
+	}
+	snapshots, err := repo.ListAudit(auditContext(), job.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) == 0 || snapshots[len(snapshots)-1].Status != sd.JobExhausted {
+		t.Fatalf("last lifecycle snapshot = %+v, want exhausted", snapshots)
 	}
 }
 
