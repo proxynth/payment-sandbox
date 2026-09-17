@@ -66,6 +66,18 @@ func (w *Worker) Execute(ctx context.Context, job *domain.Job) error {
 	if !ok {
 		return ErrUnknownJobType
 	}
+	if w.retryPolicy != nil && job.Attempts() > 0 {
+		decision, err := w.retryPolicy.Decide(job.Attempts())
+		if err != nil {
+			return err
+		}
+		if !decision.Retry {
+			if err := job.Exhaust(); err != nil {
+				return err
+			}
+			return w.repository.Save(ctx, job)
+		}
+	}
 
 	if err := job.Start(); err != nil {
 		return err
@@ -91,17 +103,23 @@ func (w *Worker) persistFailure(ctx context.Context, job *domain.Job, executionE
 	if err := job.Fail(); err != nil {
 		return errors.Join(executionErr, err)
 	}
+	if w.retryPolicy == nil {
+		return errors.Join(executionErr, w.repository.Save(ctx, job))
+	}
 
-	if w.retryPolicy != nil && w.clock != nil {
-		decision, err := w.retryPolicy.Decide(job.Attempts())
-		if err != nil {
+	decision, err := w.retryPolicy.Decide(job.Attempts())
+	if err != nil {
+		return errors.Join(executionErr, err)
+	}
+	if decision.Retry {
+		if w.clock == nil {
+			return errors.Join(executionErr, errors.New("invalid scheduler retry clock"))
+		}
+		if err := job.ScheduleRetry(w.clock.Now().Add(decision.RetryAfter)); err != nil {
 			return errors.Join(executionErr, err)
 		}
-		if decision.Retry {
-			if err := job.ScheduleRetry(w.clock.Now().Add(decision.RetryAfter)); err != nil {
-				return errors.Join(executionErr, err)
-			}
-		}
+	} else if err := job.Exhaust(); err != nil {
+		return errors.Join(executionErr, err)
 	}
 	return errors.Join(executionErr, w.repository.Save(ctx, job))
 }

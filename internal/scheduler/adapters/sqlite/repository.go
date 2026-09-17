@@ -167,7 +167,7 @@ func (r *Repository) ListAudit(ctx context.Context, id domain.JobID) ([]domain.J
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	rows, err := exec.QueryContext(ctx, `SELECT job_type,payload,status,lease_generation,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence FROM scheduler_job_audit WHERE job_id = ? ORDER BY CASE WHEN runtime_sequence = 0 THEN 1 ELSE 0 END, runtime_sequence, attempts, next_attempt_at, CASE status WHEN 'pending' THEN 1 WHEN 'leased' THEN 2 WHEN 'running' THEN 3 WHEN 'failed' THEN 4 WHEN 'completed' THEN 5 END, id`, id)
+	rows, err := exec.QueryContext(ctx, `SELECT job_type,payload,status,lease_generation,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id,runtime_sequence FROM scheduler_job_audit WHERE job_id = ? ORDER BY CASE WHEN runtime_sequence = 0 THEN 1 ELSE 0 END, runtime_sequence, attempts, next_attempt_at, CASE status WHEN 'pending' THEN 1 WHEN 'leased' THEN 2 WHEN 'running' THEN 3 WHEN 'failed' THEN 4 WHEN 'exhausted' THEN 5 WHEN 'completed' THEN 6 END, id`, id)
 	if err != nil {
 		return nil, fmt.Errorf("list scheduler audit for job %q: %w", id, err)
 	}
