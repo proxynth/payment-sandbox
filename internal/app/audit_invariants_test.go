@@ -355,16 +355,17 @@ func TestAuditExpiredJobsAreDiscovered(t *testing.T) {
 			db := auditDB(t)
 			repo := ss.NewRepository(db)
 			j := auditNewJob(t, repo, "expired", auditAt)
-			if err := j.Lease("dead-worker", auditAt.Add(time.Minute)); err != nil {
+			j, err := repo.Acquire(auditContext(), j.ID(), "dead-worker", auditAt.Add(time.Minute), auditAt)
+			if err != nil {
 				t.Fatal(err)
 			}
 			if running {
 				if err := j.Start(); err != nil {
 					t.Fatal(err)
 				}
-			}
-			if err := repo.Save(auditContext(), j); err != nil {
-				t.Fatal(err)
+				if err := repo.Save(auditContext(), j); err != nil {
+					t.Fatal(err)
+				}
 			}
 			repo = ss.NewRepository(db)
 			c := auditClock(t, auditAt.Add(2*time.Minute))
@@ -377,6 +378,78 @@ func TestAuditExpiredJobsAreDiscovered(t *testing.T) {
 				t.Fatalf("expired %s job dispatches=%d, want=1", j.Status(), calls)
 			}
 		})
+	}
+}
+
+// Invariant: a worker from an expired lease cannot persist after a newer
+// acquisition, even when the same owner acquires the job again.
+func TestAuditStaleWorkerCannotOverwriteReacquiredLease(t *testing.T) {
+	db := auditDB(t)
+	repo := ss.NewRepository(db)
+	job := auditNewJob(t, repo, "fenced-worker", auditAt)
+	first, err := repo.Acquire(auditContext(), job.ID(), "same-worker", auditAt.Add(time.Minute), auditAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	firstWorker, err := sa.NewWorker(repo, map[sd.JobType]sa.JobHandler{
+		"audit": func(ctx context.Context, _ []byte) error {
+			close(started)
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(auditContext(), 5*time.Second)
+	defer cancel()
+	firstResult := make(chan error, 1)
+	go func() { firstResult <- firstWorker.Execute(ctx, first) }()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatalf("first worker did not start: %v", ctx.Err())
+	}
+
+	second, err := repo.Acquire(ctx, job.ID(), "same-worker", auditAt.Add(3*time.Minute), auditAt.Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	auditBefore := auditCount(t, db, `SELECT count(*) FROM scheduler_job_audit WHERE job_id='fenced-worker'`)
+
+	close(release)
+	if err := <-firstResult; !errors.Is(err, sd.ErrStaleLease) {
+		t.Fatalf("stale worker error = %v, want %v", err, sd.ErrStaleLease)
+	}
+	var status string
+	var generation uint64
+	if err := db.QueryRowContext(ctx, `SELECT status, lease_generation FROM scheduler_jobs WHERE id='fenced-worker'`).Scan(&status, &generation); err != nil {
+		t.Fatal(err)
+	}
+	if status != string(sd.JobRunning) || generation != 2 {
+		t.Fatalf("stored job = status %q generation %d, want running generation 2", status, generation)
+	}
+	if auditAfter := auditCount(t, db, `SELECT count(*) FROM scheduler_job_audit WHERE job_id='fenced-worker'`); auditAfter != auditBefore {
+		t.Fatalf("stale worker appended an audit snapshot: before=%d after=%d", auditBefore, auditAfter)
+	}
+	if err := second.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(ctx, second); err != nil {
+		t.Fatalf("current worker completion failed: %v", err)
 	}
 }
 
@@ -460,7 +533,8 @@ func TestAuditCompletedJobCannotBeResetByDuplicateEnqueue(t *testing.T) {
 	db := auditDB(t)
 	repo := ss.NewRepository(db)
 	j := auditNewJob(t, repo, "done", auditAt)
-	if err := j.Lease("a", auditAt.Add(time.Minute)); err != nil {
+	j, err := repo.Acquire(auditContext(), j.ID(), "a", auditAt.Add(time.Minute), auditAt)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := j.Start(); err != nil {

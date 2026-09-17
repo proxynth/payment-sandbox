@@ -78,6 +78,9 @@ func TestJobLifecycle(t *testing.T) {
 	if job.Status() != JobLeased || job.LeaseOwner() != "worker-1" || !job.LeaseExpiresAt().Equal(leaseExpiresAt) {
 		t.Fatalf("job should contain its lease metadata after Lease()")
 	}
+	if job.LeaseGeneration() != 1 {
+		t.Fatalf("lease generation = %d, want 1", job.LeaseGeneration())
+	}
 
 	if err := job.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -98,6 +101,12 @@ func TestJobLifecycle(t *testing.T) {
 	}
 	if job.Status() != JobPending || !job.NextAttemptAt().Equal(retryAt) {
 		t.Fatalf("job should be pending at the requested retry time")
+	}
+	if err := job.Lease("worker-2", retryAt.Add(time.Minute)); err != nil {
+		t.Fatalf("Lease() retry error = %v", err)
+	}
+	if job.LeaseGeneration() != 2 {
+		t.Fatalf("lease generation after retry = %d, want 2", job.LeaseGeneration())
 	}
 }
 

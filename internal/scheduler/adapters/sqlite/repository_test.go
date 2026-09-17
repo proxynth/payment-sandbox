@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -42,7 +43,7 @@ func TestRepositoryRoundTripsAndAcquiresJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if acquired.Status() != domain.JobLeased || acquired.LeaseOwner() != "worker-1" {
+	if acquired.Status() != domain.JobLeased || acquired.LeaseOwner() != "worker-1" || acquired.LeaseGeneration() != 1 {
 		t.Fatalf("acquired job = %+v", acquired)
 	}
 	var snapshots int
@@ -51,6 +52,75 @@ func TestRepositoryRoundTripsAndAcquiresJob(t *testing.T) {
 	}
 	if snapshots != 2 {
 		t.Fatalf("audit snapshots = %d, want 2", snapshots)
+	}
+}
+
+func TestRepositoryRejectsStaleWorkerAfterLeaseReacquisition(t *testing.T) {
+	db, err := persistencesqlite.Open(context.Background(), config.DatabaseConfig{Path: t.TempDir() + "/stale-worker.db", BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := migrations.Up(db); err != nil {
+		t.Fatal(err)
+	}
+
+	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	job, err := domain.NewJob("stale-worker", "webhook.delivery", []byte("payload"), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(db)
+	if err := repository.Save(context.Background(), &job); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := repository.Acquire(context.Background(), job.ID(), "same-worker", at.Add(time.Minute), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Save(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := repository.Acquire(context.Background(), job.ID(), "same-worker", at.Add(3*time.Minute), at.Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Save(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+
+	var auditBefore int
+	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM scheduler_job_audit WHERE job_id = ?`, job.ID()).Scan(&auditBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Save(context.Background(), first); !errors.Is(err, domain.ErrStaleLease) {
+		t.Fatalf("stale worker save error = %v, want %v", err, domain.ErrStaleLease)
+	}
+
+	var status string
+	if err := db.QueryRowContext(context.Background(), `SELECT status FROM scheduler_jobs WHERE id = ?`, job.ID()).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != string(domain.JobRunning) {
+		t.Fatalf("stored status = %q, want current worker's %q state", status, domain.JobRunning)
+	}
+	var auditAfter int
+	if err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM scheduler_job_audit WHERE job_id = ?`, job.ID()).Scan(&auditAfter); err != nil {
+		t.Fatal(err)
+	}
+	if auditAfter != auditBefore {
+		t.Fatalf("stale save appended %d audit snapshots, want none", auditAfter-auditBefore)
 	}
 }
 
@@ -75,12 +145,11 @@ func TestRepositoryAuditSnapshotsRestoreCompletedJob(t *testing.T) {
 	if err := repository.Save(context.Background(), &job); err != nil {
 		t.Fatal(err)
 	}
-	if err := job.Lease("worker-1", at.Add(time.Minute)); err != nil {
+	acquired, err := repository.Acquire(context.Background(), job.ID(), "worker-1", at.Add(time.Minute), at)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.Save(context.Background(), &job); err != nil {
-		t.Fatal(err)
-	}
+	job = *acquired
 	if err := job.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +174,7 @@ func TestRepositoryAuditSnapshotsRestoreCompletedJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.ID() != job.ID() || restored.Type() != job.Type() || string(restored.Payload()) != string(job.Payload()) || restored.AggregateID() != "payment-1" || restored.CausationID() != "event-1" || restored.Status() != domain.JobCompleted || restored.Attempts() != 1 {
+	if restored.ID() != job.ID() || restored.Type() != job.Type() || string(restored.Payload()) != string(job.Payload()) || restored.AggregateID() != "payment-1" || restored.CausationID() != "event-1" || restored.Status() != domain.JobCompleted || restored.Attempts() != 1 || restored.LeaseGeneration() != 1 {
 		t.Fatalf("restored job = %#v", restored)
 	}
 }

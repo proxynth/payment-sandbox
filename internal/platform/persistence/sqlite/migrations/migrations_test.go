@@ -13,7 +13,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const latestVersion int64 = 14
+const latestVersion int64 = 15
 
 func TestUp_AppliesMigrations(t *testing.T) {
 	db := openTestDatabase(t)
@@ -52,7 +52,7 @@ func TestUp_TracksCurrentVersion(t *testing.T) {
 	}
 }
 
-func TestUp_VersionFourteenPreservesPopulatedVersionThirteen(t *testing.T) {
+func TestUp_VersionFifteenPreservesPopulatedVersionThirteen(t *testing.T) {
 	db := openTestDatabase(t)
 	goose.SetBaseFS(files)
 	if err := goose.SetDialect("sqlite3"); err != nil {
@@ -65,6 +65,7 @@ func TestUp_VersionFourteenPreservesPopulatedVersionThirteen(t *testing.T) {
 	ctx := context.Background()
 	statements := []string{
 		`INSERT INTO event_log(id,aggregate_id,event_type,occurred_at,aggregate_version,correlation_id,causation_id,payload) VALUES ('event-existing','payment-existing','payment.created','2026-01-01T00:00:00.000000000Z',1,'correlation','',X'7B7D')`,
+		`INSERT INTO scheduler_jobs(id,type,payload,scheduled_at,next_attempt_at,status,lease_owner,lease_expires_at,attempts,aggregate_id,causation_id) VALUES ('job-existing','webhook.delivery',X'7B7D','2026-01-01T00:00:00.000000000Z','2026-01-01T00:00:00.000000000Z','pending','','',0,'payment-existing','event-existing')`,
 		`INSERT INTO scheduler_job_audit(id,job_id,job_type,payload,status,attempts,scheduled_at,next_attempt_at,lease_owner,lease_expires_at,aggregate_id,causation_id) VALUES ('audit-existing','job-existing','webhook.delivery',X'7B7D','pending',0,'2026-01-01T00:00:00.000000000Z','2026-01-01T00:00:00.000000000Z','','','payment-existing','event-existing')`,
 		`INSERT INTO webhook_delivery_audit(job_id,attempt,endpoint_id,correlation_id,causation_id,outcome,http_status,error) VALUES ('job-existing',1,'endpoint-existing','correlation','event-existing','started',0,'')`,
 	}
@@ -85,6 +86,8 @@ func TestUp_VersionFourteenPreservesPopulatedVersionThirteen(t *testing.T) {
 		{"event", `SELECT runtime_sequence FROM event_log WHERE id='event-existing'`},
 		{"job snapshot", `SELECT runtime_sequence FROM scheduler_job_audit WHERE id='audit-existing'`},
 		{"webhook attempt", `SELECT runtime_sequence FROM webhook_delivery_audit WHERE job_id='job-existing' AND attempt=1`},
+		{"legacy job lease generation", `SELECT lease_generation FROM scheduler_jobs WHERE id='job-existing'`},
+		{"legacy audit lease generation", `SELECT lease_generation FROM scheduler_job_audit WHERE id='audit-existing'`},
 	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
@@ -93,7 +96,7 @@ func TestUp_VersionFourteenPreservesPopulatedVersionThirteen(t *testing.T) {
 				t.Fatalf("read migrated runtime sequence: %v", err)
 			}
 			if sequence != 0 {
-				t.Fatalf("migrated runtime sequence = %d, want 0 for legacy record", sequence)
+				t.Fatalf("migrated %s = %d, want 0 for legacy record", check.name, sequence)
 			}
 		})
 	}
