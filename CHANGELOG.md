@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4](https://github.com/proxynth/payment-sandbox/compare/v1.5.3...v1.5.4) (2026-09-17)
+
+
+### Bug Fixes
+
+* :repeat: replay idempotent response headers ([#115](https://github.com/proxynth/payment-sandbox/issues/115)) ([849dcea](https://github.com/proxynth/payment-sandbox/commit/849dcead075a3d808e01ec140c8d246c735cfc73))
+
 ## [1.5.3](https://github.com/proxynth/payment-sandbox/compare/v1.5.2...v1.5.3) (2026-09-17)
 
 
