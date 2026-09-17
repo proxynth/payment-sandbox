@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/proxynth/payment-sandbox/compare/v1.5.1...v1.5.2) (2026-09-17)
+
+
+### Bug Fixes
+
+* :lock: fence stale scheduler workers ([#111](https://github.com/proxynth/payment-sandbox/issues/111)) ([2e7093c](https://github.com/proxynth/payment-sandbox/commit/2e7093c489e80194472a915a5093cd124e8b5f8b))
+
 ## [1.5.1](https://github.com/proxynth/payment-sandbox/compare/v1.5.0...v1.5.1) (2026-09-12)
 
 
