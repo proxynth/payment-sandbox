@@ -31,6 +31,7 @@ func TestRepositoryReserveAndComplete(t *testing.T) {
 		t.Fatalf("duplicate reserve=%v err=%v", reserved, err)
 	}
 	record.Status, record.ResponseStatus, record.ResponseBody = "completed", 200, []byte(`{"ok":true}`)
+	record.ResponseHeaders = map[string][]string{"Content-Type": {"application/json"}, "X-Correlation-ID": {"original"}}
 	if err := repo.Complete(context.Background(), record); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,8 @@ func TestRepositoryReserveAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "completed" || string(got.ResponseBody) != string(record.ResponseBody) {
+	correlationIDs := got.ResponseHeaders["X-Correlation-ID"]
+	if got.Status != "completed" || string(got.ResponseBody) != string(record.ResponseBody) || len(correlationIDs) != 1 || correlationIDs[0] != "original" {
 		t.Fatalf("got=%+v", got)
 	}
 	_, err = repo.Reserve(context.Background(), application.Record{Scope: record.Scope, Key: record.Key, Fingerprint: "different", Status: "processing"})

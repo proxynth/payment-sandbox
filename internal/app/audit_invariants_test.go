@@ -99,16 +99,56 @@ func auditRuntime(t *testing.T, db *sql.DB) *application {
 	return a
 }
 func auditRequest(a *application, method, path, body, key string) *httptest.ResponseRecorder {
+	return auditRequestWithCorrelation(a, method, path, body, key, "audit-fixed")
+}
+func auditRequestWithCorrelation(a *application, method, path, body, key, correlationID string) *httptest.ResponseRecorder {
 	req := httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer audit-only")
-	req.Header.Set("X-Correlation-ID", "audit-fixed")
+	req.Header.Set("X-Correlation-ID", correlationID)
 	if key != "" {
 		req.Header.Set("Idempotency-Key", key)
 	}
 	rec := httptest.NewRecorder()
 	a.server.Handler().ServeHTTP(rec, req)
 	return rec
+}
+
+func TestAuditHTTPIdempotencyReplaysStableResponseMetadata(t *testing.T) {
+	db := auditDB(t)
+	a := auditRuntime(t, db)
+	createBody := `{"id":"replay-p","amount":1000,"currency":"EUR"}`
+	created := auditRequestWithCorrelation(a, "POST", "/payments", createBody, "create-once", "operation-create")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+	createReplay := auditRequestWithCorrelation(a, "POST", "/payments", createBody, "create-once", "retry-create")
+	if createReplay.Code != created.Code || createReplay.Body.String() != created.Body.String() {
+		t.Fatalf("create replay status/body differ: got %d %s, want %d %s", createReplay.Code, createReplay.Body.String(), created.Code, created.Body.String())
+	}
+	for _, name := range []string{"Content-Type", "Location", "X-Correlation-ID"} {
+		if got, want := createReplay.Header().Get(name), created.Header().Get(name); got != want {
+			t.Errorf("create replay %s = %q, want %q", name, got, want)
+		}
+	}
+
+	if got := auditHTTP(t, a, "POST", "/payments/replay-p/authorize", "", "", http.StatusOK); got == "" {
+		t.Fatal("authorize response is empty")
+	}
+	commandBody := `{"amount":400,"currency":"EUR"}`
+	captured := auditRequestWithCorrelation(a, "POST", "/payments/replay-p/capture", commandBody, "capture-once", "operation-capture")
+	replay := auditRequestWithCorrelation(a, "POST", "/payments/replay-p/capture", commandBody, "capture-once", "retry-capture")
+	if replay.Code != captured.Code || replay.Body.String() != captured.Body.String() {
+		t.Fatalf("command replay status/body differ: got %d %s, want %d %s", replay.Code, replay.Body.String(), captured.Code, captured.Body.String())
+	}
+	for _, name := range []string{"Content-Type", "X-Correlation-ID"} {
+		if got, want := replay.Header().Get(name), captured.Header().Get(name); got != want {
+			t.Errorf("command replay %s = %q, want %q", name, got, want)
+		}
+	}
+	if got := auditCount(t, db, `SELECT COUNT(*) FROM event_log WHERE aggregate_id='replay-p' AND event_type='payment.captured'`); got != 1 {
+		t.Fatalf("captured events = %d, want 1", got)
+	}
 }
 func auditHTTP(t *testing.T, a *application, method, path, body, key string, want int) string {
 	t.Helper()

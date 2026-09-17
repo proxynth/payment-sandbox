@@ -21,6 +21,12 @@ import (
 
 const paymentPathPrefix = "/payments/"
 
+var replayableResponseHeaders = []string{
+	"Content-Type",
+	"Location",
+	"X-Correlation-ID",
+}
+
 type Handler struct {
 	create      *paymentapplication.CreatePayment
 	get         *paymentapplication.GetPayment
@@ -162,6 +168,12 @@ func (h *Handler) idempotent(next http.Handler) http.Handler {
 				api.WriteError(writer, http.StatusConflict, "idempotency_in_progress", "an identical request is already being processed")
 				return
 			}
+			for _, name := range replayableResponseHeaders {
+				values := existing.ResponseHeaders[name]
+				for _, value := range values {
+					writer.Header().Add(name, value)
+				}
+			}
 			writer.WriteHeader(existing.ResponseStatus)
 			_, _ = writer.Write(existing.ResponseBody)
 			return
@@ -172,6 +184,12 @@ func (h *Handler) idempotent(next http.Handler) http.Handler {
 			_ = h.idempotency.Release(request.Context(), scope, key, record.Fingerprint)
 		} else {
 			record.Status, record.ResponseStatus, record.ResponseBody = "completed", buffer.status, append([]byte(nil), buffer.body.Bytes()...)
+			record.ResponseHeaders = make(map[string][]string, len(replayableResponseHeaders))
+			for _, name := range replayableResponseHeaders {
+				if values := buffer.header.Values(name); len(values) > 0 {
+					record.ResponseHeaders[name] = append([]string(nil), values...)
+				}
+			}
 			if err := h.idempotency.Complete(request.Context(), record); err != nil {
 				api.WriteError(writer, http.StatusInternalServerError, "internal_error", err.Error())
 				return

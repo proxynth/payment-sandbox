@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -53,17 +54,21 @@ func (r *Repository) Reserve(ctx context.Context, record application.Record) (bo
 
 func (r *Repository) Find(ctx context.Context, scope, key string) (application.Record, error) {
 	var record application.Record
+	var responseHeaders []byte
 	exec := r.db
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	err := exec.QueryRowContext(ctx, `SELECT scope,key,fingerprint,status,response_status,response_body FROM idempotency_records WHERE scope=$1 AND key=$2`, scope, key).
-		Scan(&record.Scope, &record.Key, &record.Fingerprint, &record.Status, &record.ResponseStatus, &record.ResponseBody)
+	err := exec.QueryRowContext(ctx, `SELECT scope,key,fingerprint,status,response_status,response_body,response_headers FROM idempotency_records WHERE scope=$1 AND key=$2`, scope, key).
+		Scan(&record.Scope, &record.Key, &record.Fingerprint, &record.Status, &record.ResponseStatus, &record.ResponseBody, &responseHeaders)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.Record{}, application.ErrNotFound
 	}
 	if err != nil {
 		return application.Record{}, fmt.Errorf("find idempotency record: %w", err)
+	}
+	if err := json.Unmarshal(responseHeaders, &record.ResponseHeaders); err != nil {
+		return application.Record{}, fmt.Errorf("decode idempotency response headers: %w", err)
 	}
 	return record, nil
 }
@@ -72,11 +77,15 @@ func (r *Repository) Complete(ctx context.Context, record application.Record) er
 	if record.ResponseBody == nil {
 		record.ResponseBody = []byte{}
 	}
+	responseHeaders, err := json.Marshal(record.ResponseHeaders)
+	if err != nil {
+		return fmt.Errorf("encode idempotency response headers: %w", err)
+	}
 	exec := r.db
 	if tx := persistencesqlite.TxFromContext(ctx); tx != nil {
 		exec = tx
 	}
-	result, err := exec.ExecContext(ctx, `UPDATE idempotency_records SET status=$1,response_status=$2,response_body=$3 WHERE scope=$4 AND key=$5 AND fingerprint=$6`, record.Status, record.ResponseStatus, record.ResponseBody, record.Scope, record.Key, record.Fingerprint)
+	result, err := exec.ExecContext(ctx, `UPDATE idempotency_records SET status=$1,response_status=$2,response_body=$3,response_headers=$4 WHERE scope=$5 AND key=$6 AND fingerprint=$7`, record.Status, record.ResponseStatus, record.ResponseBody, responseHeaders, record.Scope, record.Key, record.Fingerprint)
 	if err != nil {
 		return fmt.Errorf("complete idempotency record: %w", err)
 	}
