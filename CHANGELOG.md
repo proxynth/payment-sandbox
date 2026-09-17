@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/proxynth/payment-sandbox/compare/v1.5.2...v1.5.3) (2026-09-17)
+
+
+### Bug Fixes
+
+* :repeat: enforce scheduler retry limits ([#113](https://github.com/proxynth/payment-sandbox/issues/113)) ([120381d](https://github.com/proxynth/payment-sandbox/commit/120381dfd3c5973237c355368990b5e592927bc9))
+
 ## [1.5.2](https://github.com/proxynth/payment-sandbox/compare/v1.5.1...v1.5.2) (2026-09-17)
 
 
